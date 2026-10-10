@@ -1,0 +1,52 @@
+
+# Dependencies
+node_modules/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Build outputs
+dist/
+build/
+coverage/
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Local development files
+.DS_Store
+Thumbs.db
+*.local
+
+# Editor settings
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Test and coverage outputs
+.nyc_output/
+playwright-report/
+test-results/
+
+# Temporary files
+tmp/
+temp/
+
+# Frontend framework caches
+client/.vite/
+client/dist/
+
+# Next.js, if introduced later
+.next/
+out/
+
+# Deployment and local infrastructure secrets
+*.pem
+*.key
+.env.production
