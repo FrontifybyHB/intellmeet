@@ -1,14 +1,13 @@
 const mongoose = require("mongoose");
 
+const { getEnv } = require("./env");
+const logger = require("./logger");
+
 async function connectDB() {
-  const { MONGODB_URI } = process.env;
+  const { mongoUri } = getEnv();
 
-  if (!MONGODB_URI) {
-    throw new Error("MONGODB_URI is required to connect to the database.");
-  }
-
-  await mongoose.connect(MONGODB_URI);
-  console.log("Connected to MongoDB.");
+  await mongoose.connect(mongoUri);
+  logger.info("db_connected", {});
 }
 
 module.exports = connectDB;
