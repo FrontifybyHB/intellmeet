@@ -1,0 +1,118 @@
+"use strict";
+
+const mongoose = require("mongoose");
+
+const AppError = require("../utils/AppError");
+const { HTTP_STATUS } = require("../constants/httpStatus");
+const Meeting = require("../models/Meeting");
+const MeetingParticipant = require("../models/MeetingParticipant");
+const { mintJoinToken } = require("./livekitService");
+
+function roomNameFor(meetingId) {
+  return `meeting_${String(meetingId)}`;
+}
+
+// Read-only authorization for POST /api/meetings/:id/join.
+// - Validates the meeting id (400 on malformed).
+// - 404 when the meeting does not exist.
+// - 403 when the meeting ended or was cancelled.
+// - 403 unless the caller is the host (Meeting.hostId) or has a
+//   server-verified MeetingParticipant row with status "admitted".
+// Never trusts a client-supplied role. Never creates membership,
+// increments joinCount, or marks presence; it only reads Meeting +
+// MeetingParticipant and mints a short-lived room token.
+//
+// Query shape: both reads project only the fields authorization needs
+// and use lean() (both schemas have no getters, virtuals, or document
+// middleware, so lean is behavior-preserving). Meeting resolves via the
+// _id index; membership resolves via the unique (meetingId, userId)
+// index. The member path needs two sequential reads because the second
+// filter depends on the meeting's _id/hostId; the host path skips the
+// second read entirely.
+//
+// Race note: the reads below are point-in-time checks immediately
+// followed by token signing — the sequence is NOT atomic. If admission
+// is removed, or the meeting ends, between the check and signing (or
+// after issuance), the already-minted token stays usable until its
+// short TTL expires. Phase 1 has no provider-side revocation wired in;
+// lifecycle changes (removal/end) are owned by the Meeting owner and
+// must coordinate there. The short configurable TTL bounds the window.
+async function authorizeJoin({ meetingIdParam, userId }) {
+  if (
+    typeof meetingIdParam !== "string" ||
+    !mongoose.Types.ObjectId.isValid(meetingIdParam)
+  ) {
+    throw new AppError(
+      HTTP_STATUS.BAD_REQUEST,
+      "Invalid meeting id.",
+      "INVALID_MEETING_ID"
+    );
+  }
+
+  const meeting = await Meeting.findById(meetingIdParam, {
+    hostId: 1,
+    status: 1,
+  }).lean();
+  if (!meeting) {
+    throw new AppError(
+      HTTP_STATUS.NOT_FOUND,
+      "Meeting not found.",
+      "MEETING_NOT_FOUND"
+    );
+  }
+  if (meeting.status === "ended") {
+    throw new AppError(
+      HTTP_STATUS.FORBIDDEN,
+      "Meeting has ended.",
+      "MEETING_ENDED"
+    );
+  }
+  if (meeting.status === "cancelled") {
+    throw new AppError(
+      HTTP_STATUS.FORBIDDEN,
+      "Meeting was cancelled.",
+      "MEETING_CANCELLED"
+    );
+  }
+
+  const isHost = String(meeting.hostId) === String(userId);
+  if (!isHost) {
+    const membership = await MeetingParticipant.findOne(
+      {
+        meetingId: meeting._id,
+        userId,
+      },
+      { status: 1 }
+    ).lean();
+    if (!membership) {
+      throw new AppError(
+        HTTP_STATUS.FORBIDDEN,
+        "Meeting membership required.",
+        "NOT_A_MEMBER"
+      );
+    }
+    if (membership.status !== "admitted") {
+      throw new AppError(
+        HTTP_STATUS.FORBIDDEN,
+        "Meeting membership required.",
+        "NOT_ADMITTED"
+      );
+    }
+  }
+
+  const roomName = roomNameFor(meeting._id);
+  const issued = mintJoinToken({ identity: String(userId), roomName });
+
+  return {
+    roomName: issued.roomName,
+    livekitUrl: issued.livekitUrl,
+    token: issued.token,
+    permissions: {
+      isHost,
+      canRecord: isHost,
+      canScreenShare: true,
+    },
+  };
+}
+
+module.exports = { authorizeJoin, roomNameFor };

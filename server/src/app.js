@@ -8,6 +8,7 @@ const errorHandler = require("./middleware/errorHandler");
 const notFound = require("./middleware/notFound");
 const requestId = require("./middleware/requestId");
 const securityHeaders = require("./middleware/securityHeaders");
+const meetingsRoutes = require("./routes/meetings");
 
 const app = express();
 const { clientUrl } = getEnv();
@@ -35,6 +36,8 @@ app.get(
     res.status(200).json({ status: "ok" });
   })
 );
+
+app.use("/api/meetings", meetingsRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

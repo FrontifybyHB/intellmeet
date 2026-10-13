@@ -1,17 +1,63 @@
+const http = require("node:http");
+
 const { getEnv, getSafeEnvSummary } = require("./config/env");
 const logger = require("./config/logger");
 
 const app = require("./app");
 const connectDB = require("./config/db");
+const { attachMeetingSockets } = require("./sockets/meetingSockets");
 
 const { port, nodeEnv } = getEnv();
+
+// Graceful-shutdown drain budget: in-flight chat sends finish persisting
+// inside this window before the process exits.
+const SHUTDOWN_GRACE_MS = 5000;
+
+let server = null;
+let sockets = null;
+let shuttingDown = false;
 
 async function startServer() {
   await connectDB();
 
-  app.listen(port, () => {
-    logger.info("server_listening", { ...getSafeEnvSummary(), env: nodeEnv });
+  // One HTTP server for Express + Socket.IO: the socket server attaches
+  // to this listener instead of opening its own port.
+  server = http.createServer(app);
+  sockets = attachMeetingSockets(server);
+
+  await new Promise((resolve) => {
+    server.listen(port, resolve);
   });
+  logger.info("server_listening", { ...getSafeEnvSummary(), env: nodeEnv });
+  return { server, sockets };
+}
+
+async function stopServer() {
+  if (shuttingDown) {
+    return;
+  }
+  shuttingDown = true;
+  const grace = new Promise((resolve) => {
+    setTimeout(resolve, SHUTDOWN_GRACE_MS);
+  });
+  try {
+    // Disconnect sockets first so clients fail over to history catch-up,
+    // then stop accepting HTTP. No timers/listeners leak: the socket
+    // module holds no per-connection intervals.
+    if (sockets) {
+      await sockets.close();
+    }
+    // socket.io 4.x closes the attached HTTP server as part of io.close():
+    // only close it when still listening.
+    if (server && server.listening) {
+      await new Promise((resolve, reject) => {
+        server.close((err) => (err ? reject(err) : resolve()));
+      });
+    }
+  } finally {
+    await grace;
+  }
+  logger.info("server_stopped", {});
 }
 
 function handleStartupError(error) {
@@ -19,8 +65,27 @@ function handleStartupError(error) {
   process.exitCode = 1;
 }
 
-if (require.main === module) {
-  startServer().catch(handleStartupError);
+function handleShutdownSignal(signal) {
+  logger.info("shutdown_signal", { signal });
+  stopServer()
+    .then(() => {
+      server = null;
+      sockets = null;
+    })
+    .catch((err) => {
+      logger.error(
+        "server_stop_failed",
+        logger.formatStartupFailure(err)
+      );
+    });
 }
 
-module.exports = { startServer, handleStartupError };
+if (require.main === module) {
+  startServer().catch(handleStartupError);
+  for (const signal of ["SIGTERM", "SIGINT"]) {
+    process.on(signal, () => handleShutdownSignal(signal));
+  }
+}
+
+module.exports = { startServer, stopServer, handleStartupError };
+module.exports.SHUTDOWN_GRACE_MS = SHUTDOWN_GRACE_MS;
