@@ -9,6 +9,8 @@ const notFound = require("./middleware/notFound");
 const requestId = require("./middleware/requestId");
 const securityHeaders = require("./middleware/securityHeaders");
 const meetingsRoutes = require("./routes/meetings");
+const webhooksRoutes = require("./routes/webhooks");
+const devLabRoutes = require("./routes/devLab");
 
 const app = express();
 const { clientUrl } = getEnv();
@@ -38,6 +40,11 @@ app.get(
 );
 
 app.use("/api/meetings", meetingsRoutes);
+// Provider webhooks verify by signature over raw bytes (route-scoped
+// raw parser inside the router) — never user JWT/CSRF auth.
+app.use("/api/webhooks", webhooksRoutes);
+// Protected contract lab: real auth, no bypass, not production UI.
+app.use("/dev", devLabRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

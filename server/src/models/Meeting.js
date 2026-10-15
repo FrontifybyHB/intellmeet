@@ -21,6 +21,21 @@ const meetingSchema = new mongoose.Schema(
       index: true,
     },
     scheduledAt: { type: Date },
+    // Phase 3 termination facts. endedAt marks admission closure;
+    // mediaCleanup is a SEPARATE fact (provider room teardown), and
+    // closeVersion guards conditional end writes against races.
+    // No arrays grow here: consent history lives on RecordingConsent.
+    endedAt: { type: Date, default: null },
+    closeVersion: { type: Number, default: 0 },
+    mediaCleanup: {
+      state: {
+        type: String,
+        enum: ["none", "pending", "done", "unknown"],
+        default: "none",
+      },
+      at: { type: Date, default: null },
+      errorCode: { type: String, default: null },
+    },
   },
   { timestamps: true }
 );

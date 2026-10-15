@@ -3,6 +3,8 @@
 const dotenv = require("dotenv");
 
 const { CHAT_LIMITS } = require("../constants/chatLimits");
+const { RECORDING_LIMITS } = require("../constants/recordingLimits");
+const { TRANSCRIPTION_LIMITS } = require("../constants/transcriptionLimits");
 
 dotenv.config();
 
@@ -85,6 +87,63 @@ function parseBoundedInt(raw, { def, min, max, name }) {
     throw new Error(`${name} must be an integer between ${min} and ${max}.`);
   }
   return value;
+}
+
+function parseRecordingProvider(raw) {
+  if (raw === undefined || raw === null || raw === "") {
+    // Fail closed: without an explicit provider choice, recording
+    // control-plane calls return 503 INTEGRATION_BLOCKER. "mock" is for
+    // tests; "live" requires credentials + Egress-compatible storage.
+    return "disabled";
+  }
+  if (raw === "disabled" || raw === "mock" || raw === "live") {
+    return raw;
+  }
+  throw new Error("RECORDING_PROVIDER must be one of disabled, mock, live.");
+}
+
+function parseNoticeVersion(raw) {
+  if (raw === undefined || raw === null || raw === "") {
+    return RECORDING_LIMITS.NOTICE_VERSION_DEFAULT;
+  }
+  if (
+    typeof raw !== "string" ||
+    raw.length === 0 ||
+    raw.length > RECORDING_LIMITS.NOTICE_VERSION_MAX
+  ) {
+    throw new Error(
+      `RECORDING_NOTICE_VERSION must be 1-${RECORDING_LIMITS.NOTICE_VERSION_MAX} chars.`
+    );
+  }
+  return raw;
+}
+
+function parseTranscriptionProvider(raw) {
+  if (raw === undefined || raw === null || raw === "") {
+    // Fail closed: without an explicit provider choice, transcription
+    // enqueue/processing returns 503 INTEGRATION_BLOCKER. "mock" is for
+    // tests (deterministic, labeled); "live" requires GEMINI_API_KEY.
+    return "disabled";
+  }
+  if (raw === "disabled" || raw === "mock" || raw === "live") {
+    return raw;
+  }
+  throw new Error("TRANSCRIPTION_PROVIDER must be one of disabled, mock, live.");
+}
+
+function parseGeminiModel(raw) {
+  if (raw === undefined || raw === null || raw === "") {
+    return TRANSCRIPTION_LIMITS.GEMINI_MODEL_DEFAULT;
+  }
+  if (
+    typeof raw !== "string" ||
+    raw.length === 0 ||
+    raw.length > TRANSCRIPTION_LIMITS.GEMINI_MODEL_MAX ||
+    !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(raw)
+  ) {
+    throw new Error("GEMINI_MODEL must be a safe model identifier.");
+  }
+  return raw;
 }
 
 // Centralized, validated environment access for boot code only.
@@ -190,6 +249,166 @@ function loadEnv(source) {
       max: 1048576,
       name: "SOCKET_PACKET_MAX_BYTES",
     }),
+    recordingProvider: parseRecordingProvider(envSource.RECORDING_PROVIDER),
+    recordingNoticeVersion: parseNoticeVersion(envSource.RECORDING_NOTICE_VERSION),
+    recordingWebhookSecret: parseOptionalString(
+      envSource.LIVEKIT_WEBHOOK_SECRET
+    ),
+    recordingOutputBucket: parseOptionalString(envSource.RECORDING_OUTPUT_BUCKET),
+    recordingOutputFormat: parseOptionalString(envSource.RECORDING_OUTPUT_FORMAT) ||
+      RECORDING_LIMITS.OUTPUT_FORMAT_DEFAULT,
+    recordingKeyPrefix: parseOptionalString(envSource.RECORDING_KEY_PREFIX) ||
+      RECORDING_LIMITS.STORAGE_KEY_PREFIX_DEFAULT,
+    recordingStorageBaseUrl: parseOptionalString(
+      envSource.RECORDING_STORAGE_BASE_URL
+    ),
+    recordingProviderTimeoutMs: parseBoundedInt(
+      envSource.RECORDING_PROVIDER_TIMEOUT_MS,
+      {
+        def: RECORDING_LIMITS.PROVIDER_TIMEOUT_MS_DEFAULT,
+        min: RECORDING_LIMITS.PROVIDER_TIMEOUT_MS_MIN,
+        max: RECORDING_LIMITS.PROVIDER_TIMEOUT_MS_MAX,
+        name: "RECORDING_PROVIDER_TIMEOUT_MS",
+      }
+    ),
+    recordingMaxActiveGlobal: parseBoundedInt(
+      envSource.RECORDING_MAX_ACTIVE_GLOBAL,
+      {
+        def: RECORDING_LIMITS.MAX_ACTIVE_GLOBAL_DEFAULT,
+        min: RECORDING_LIMITS.MAX_ACTIVE_GLOBAL_MIN,
+        max: RECORDING_LIMITS.MAX_ACTIVE_GLOBAL_MAX,
+        name: "RECORDING_MAX_ACTIVE_GLOBAL",
+      }
+    ),
+    recordingRecoveryBatch: parseBoundedInt(envSource.RECORDING_RECOVERY_BATCH, {
+      def: RECORDING_LIMITS.RECOVERY_BATCH_DEFAULT,
+      min: RECORDING_LIMITS.RECOVERY_BATCH_MIN,
+      max: RECORDING_LIMITS.RECOVERY_BATCH_MAX,
+      name: "RECORDING_RECOVERY_BATCH",
+    }),
+    recordingRecoveryLeaseMs: parseBoundedInt(
+      envSource.RECORDING_RECOVERY_LEASE_MS,
+      {
+        def: RECORDING_LIMITS.RECOVERY_LEASE_MS_DEFAULT,
+        min: RECORDING_LIMITS.RECOVERY_LEASE_MS_MIN,
+        max: RECORDING_LIMITS.RECOVERY_LEASE_MS_MAX,
+        name: "RECORDING_RECOVERY_LEASE_MS",
+      }
+    ),
+    recordingRecoveryMaxAttempts: parseBoundedInt(
+      envSource.RECORDING_RECOVERY_MAX_ATTEMPTS,
+      {
+        def: RECORDING_LIMITS.RECOVERY_MAX_ATTEMPTS_DEFAULT,
+        min: RECORDING_LIMITS.RECOVERY_MAX_ATTEMPTS_MIN,
+        max: RECORDING_LIMITS.RECOVERY_MAX_ATTEMPTS_MAX,
+        name: "RECORDING_RECOVERY_MAX_ATTEMPTS",
+      }
+    ),
+    recordingAccessLinkTtlSeconds: parseBoundedInt(
+      envSource.RECORDING_ACCESS_LINK_TTL_SECONDS,
+      {
+        def: RECORDING_LIMITS.ACCESS_LINK_TTL_SECONDS_DEFAULT,
+        min: RECORDING_LIMITS.ACCESS_LINK_TTL_SECONDS_MIN,
+        max: RECORDING_LIMITS.ACCESS_LINK_TTL_SECONDS_MAX,
+        name: "RECORDING_ACCESS_LINK_TTL_SECONDS",
+      }
+    ),
+    webhookMaxBytes: parseBoundedInt(envSource.WEBHOOK_MAX_BYTES, {
+      def: RECORDING_LIMITS.WEBHOOK_MAX_BYTES_DEFAULT,
+      min: RECORDING_LIMITS.WEBHOOK_MAX_BYTES_MIN,
+      max: RECORDING_LIMITS.WEBHOOK_MAX_BYTES_MAX,
+      name: "WEBHOOK_MAX_BYTES",
+    }),
+    transcriptionProvider: parseTranscriptionProvider(
+      envSource.TRANSCRIPTION_PROVIDER
+    ),
+    geminiApiKey: parseOptionalString(envSource.GEMINI_API_KEY),
+    geminiModel: parseGeminiModel(envSource.GEMINI_MODEL),
+    redisUrl: parseOptionalString(envSource.REDIS_URL),
+    transcriptChunkMs: parseBoundedInt(envSource.TRANSCRIPT_CHUNK_MS, {
+      def: TRANSCRIPTION_LIMITS.CHUNK_MS_DEFAULT,
+      min: TRANSCRIPTION_LIMITS.CHUNK_MS_MIN,
+      max: TRANSCRIPTION_LIMITS.CHUNK_MS_MAX,
+      name: "TRANSCRIPT_CHUNK_MS",
+    }),
+    transcriptOverlapMs: parseBoundedInt(envSource.TRANSCRIPT_OVERLAP_MS, {
+      def: TRANSCRIPTION_LIMITS.OVERLAP_MS_DEFAULT,
+      min: TRANSCRIPTION_LIMITS.OVERLAP_MS_MIN,
+      max: TRANSCRIPTION_LIMITS.OVERLAP_MS_MAX,
+      name: "TRANSCRIPT_OVERLAP_MS",
+    }),
+    transcriptMaxChunks: parseBoundedInt(envSource.TRANSCRIPT_MAX_CHUNKS, {
+      def: TRANSCRIPTION_LIMITS.MAX_CHUNKS_DEFAULT,
+      min: TRANSCRIPTION_LIMITS.MAX_CHUNKS_MIN,
+      max: TRANSCRIPTION_LIMITS.MAX_CHUNKS_MAX,
+      name: "TRANSCRIPT_MAX_CHUNKS",
+    }),
+    transcriptMaxAudioBytes: parseBoundedInt(
+      envSource.TRANSCRIPT_MAX_AUDIO_BYTES,
+      {
+        def: TRANSCRIPTION_LIMITS.MAX_AUDIO_BYTES_DEFAULT,
+        min: TRANSCRIPTION_LIMITS.MAX_AUDIO_BYTES_MIN,
+        max: TRANSCRIPTION_LIMITS.MAX_AUDIO_BYTES_MAX,
+        name: "TRANSCRIPT_MAX_AUDIO_BYTES",
+      }
+    ),
+    transcriptMaxAudioMs: parseBoundedInt(envSource.TRANSCRIPT_MAX_AUDIO_MS, {
+      def: TRANSCRIPTION_LIMITS.MAX_AUDIO_MS_DEFAULT,
+      min: TRANSCRIPTION_LIMITS.MAX_AUDIO_MS_MIN,
+      max: TRANSCRIPTION_LIMITS.MAX_AUDIO_MS_MAX,
+      name: "TRANSCRIPT_MAX_AUDIO_MS",
+    }),
+    transcriptWorkerConcurrency: parseBoundedInt(
+      envSource.TRANSCRIPT_WORKER_CONCURRENCY,
+      {
+        def: TRANSCRIPTION_LIMITS.WORKER_CONCURRENCY_DEFAULT,
+        min: TRANSCRIPTION_LIMITS.WORKER_CONCURRENCY_MIN,
+        max: TRANSCRIPTION_LIMITS.WORKER_CONCURRENCY_MAX,
+        name: "TRANSCRIPT_WORKER_CONCURRENCY",
+      }
+    ),
+    transcriptQueueMaxWaiting: parseBoundedInt(
+      envSource.TRANSCRIPT_QUEUE_MAX_WAITING,
+      {
+        def: TRANSCRIPTION_LIMITS.QUEUE_MAX_WAITING_DEFAULT,
+        min: TRANSCRIPTION_LIMITS.QUEUE_MAX_WAITING_MIN,
+        max: TRANSCRIPTION_LIMITS.QUEUE_MAX_WAITING_MAX,
+        name: "TRANSCRIPT_QUEUE_MAX_WAITING",
+      }
+    ),
+    transcriptJobAttempts: parseBoundedInt(envSource.TRANSCRIPT_JOB_ATTEMPTS, {
+      def: TRANSCRIPTION_LIMITS.JOB_ATTEMPTS_DEFAULT,
+      min: TRANSCRIPTION_LIMITS.JOB_ATTEMPTS_MIN,
+      max: TRANSCRIPTION_LIMITS.JOB_ATTEMPTS_MAX,
+      name: "TRANSCRIPT_JOB_ATTEMPTS",
+    }),
+    transcriptStepTimeoutMs: parseBoundedInt(
+      envSource.TRANSCRIPT_STEP_TIMEOUT_MS,
+      {
+        def: TRANSCRIPTION_LIMITS.STEP_TIMEOUT_MS_DEFAULT,
+        min: TRANSCRIPTION_LIMITS.STEP_TIMEOUT_MS_MIN,
+        max: TRANSCRIPTION_LIMITS.STEP_TIMEOUT_MS_MAX,
+        name: "TRANSCRIPT_STEP_TIMEOUT_MS",
+      }
+    ),
+    transcriptRunTimeoutMs: parseBoundedInt(
+      envSource.TRANSCRIPT_RUN_TIMEOUT_MS,
+      {
+        def: TRANSCRIPTION_LIMITS.RUN_TIMEOUT_MS_DEFAULT,
+        min: TRANSCRIPTION_LIMITS.RUN_TIMEOUT_MS_MIN,
+        max: TRANSCRIPTION_LIMITS.RUN_TIMEOUT_MS_MAX,
+        name: "TRANSCRIPT_RUN_TIMEOUT_MS",
+      }
+    ),
+    transcriptMaxCallsPerDay: parseBoundedInt(
+      envSource.TRANSCRIPT_MAX_CALLS_PER_DAY,
+      {
+        def: TRANSCRIPTION_LIMITS.MAX_CALLS_PER_DAY_DEFAULT,
+        min: TRANSCRIPTION_LIMITS.MAX_CALLS_PER_DAY_MIN,
+        max: TRANSCRIPTION_LIMITS.MAX_CALLS_PER_DAY_MAX,
+        name: "TRANSCRIPT_MAX_CALLS_PER_DAY",
+      }
+    ),
   };
 }
 
@@ -214,6 +433,11 @@ function getSafeEnvSummary(env) {
     livekitConfigured: Boolean(
       resolved.livekitUrl && resolved.livekitApiKey && resolved.livekitApiSecret
     ),
+    recordingProvider: resolved.recordingProvider,
+    recordingStorageConfigured: Boolean(resolved.recordingOutputBucket),
+    transcriptionProvider: resolved.transcriptionProvider,
+    geminiConfigured: Boolean(resolved.geminiApiKey),
+    redisConfigured: Boolean(resolved.redisUrl),
   };
 }
 

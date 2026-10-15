@@ -18,6 +18,10 @@ process.env.LIVEKIT_URL = "wss://livekit.test.example.com";
 process.env.LIVEKIT_API_KEY = "test-livekit-key";
 process.env.LIVEKIT_API_SECRET = "test-livekit-secret-do-not-use";
 delete process.env.LIVEKIT_TTL_SECONDS;
+// Hermetic provider default: the local .env may set RECORDING_PROVIDER=live.
+// These stubbed join tests pin the disabled default they were written
+// against (no Recording DB; canPublish=true), mirroring the delete pattern above.
+process.env.RECORDING_PROVIDER = "disabled";
 
 const { resetEnvCache } = require("../src/config/env");
 
@@ -120,6 +124,7 @@ describe("POST /api/meetings/:id/join", () => {
 
   beforeEach(() => {
     resetEnvCache();
+    process.env.RECORDING_PROVIDER = "disabled";
     process.env.JWT_SECRET = "test-jwt-secret-do-not-use-in-prod";
     process.env.LIVEKIT_URL = "wss://livekit.test.example.com";
     process.env.LIVEKIT_API_KEY = "test-livekit-key";
@@ -282,6 +287,55 @@ describe("POST /api/meetings/:id/join", () => {
     );
     const serialized = JSON.stringify(body);
     assert.ok(!serialized.includes("test-livekit-secret-do-not-use"));
+  });
+
+  it("skips the capture probe when the recording provider is disabled", async () => {
+    const { meetingId, hostId, memberId } = makeIds();
+    stubDb({
+      meeting: { _id: meetingId, hostId, status: "live" },
+      participant: { meetingId, userId: memberId, status: "admitted" },
+    });
+    const Recording = require("../src/models/Recording");
+    const originalRecordingFindOne = Recording.findOne;
+    let recordingCalls = 0;
+    Recording.findOne = () => {
+      recordingCalls += 1;
+      return { lean: async () => null };
+    };
+    try {
+      const res = await postJoin(meetingId.toString(), signAuthToken(memberId.toString()));
+      assert.equal(res.status, 200);
+      const body = await res.json();
+      assert.equal(decodePayload(body.token).grants.canPublish, true);
+      assert.equal(recordingCalls, 0, "disabled provider must not query Recording");
+    } finally {
+      Recording.findOne = originalRecordingFindOne;
+    }
+  });
+
+  it("fails closed to subscribe-only when the capture probe errors", async () => {
+    const { meetingId, hostId, memberId } = makeIds();
+    stubDb({
+      meeting: { _id: meetingId, hostId, status: "live" },
+      participant: { meetingId, userId: memberId, status: "admitted" },
+    });
+    process.env.RECORDING_PROVIDER = "mock";
+    resetEnvCache();
+    const Recording = require("../src/models/Recording");
+    const originalRecordingFindOne = Recording.findOne;
+    Recording.findOne = () => ({ lean: async () => { throw new Error("db down"); } });
+    try {
+      const res = await postJoin(meetingId.toString(), signAuthToken(memberId.toString()));
+      assert.equal(res.status, 200, "join stays possible so the user reaches consent");
+      const body = await res.json();
+      const claims = decodePayload(body.token);
+      assert.equal(claims.grants.canPublish, false, "probe error must not grant publish");
+      assert.equal(claims.grants.canPublishData, false);
+    } finally {
+      Recording.findOne = originalRecordingFindOne;
+      process.env.RECORDING_PROVIDER = "disabled";
+      resetEnvCache();
+    }
   });
 
   it("repeat joins stay valid and do not mutate membership", async () => {

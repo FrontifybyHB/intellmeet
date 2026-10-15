@@ -57,6 +57,15 @@ process.env.LIVEKIT_API_SECRET =
   process.env.LIVEKIT_API_SECRET || "load-secret-do-not-use";
 process.env.JOIN_RATE_LIMIT_MAX = RATE_LIMIT_MAX;
 delete process.env.JOIN_RATE_LIMIT_WINDOW_MS;
+// Hermetic provider default: a local .env with RECORDING_PROVIDER=live would
+// otherwise force every stubbed join through a 10s mongoose-buffered
+// Recording probe. Throughput runs measure Express+auth+signing; pass
+// --recording-provider=mock|live explicitly to exercise consent gating.
+if (!process.argv.some((a) => a.startsWith("--recording-provider="))) {
+  process.env.RECORDING_PROVIDER = "disabled";
+} else {
+  process.env.RECORDING_PROVIDER = arg("recording-provider", "disabled");
+}
 
 const { resetEnvCache } = require("../src/config/env");
 

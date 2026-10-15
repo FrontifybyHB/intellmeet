@@ -22,6 +22,8 @@ process.env.LIVEKIT_API_SECRET = "test-livekit-secret-do-not-use";
 delete process.env.LIVEKIT_TTL_SECONDS;
 delete process.env.JOIN_RATE_LIMIT_MAX;
 delete process.env.JOIN_RATE_LIMIT_WINDOW_MS;
+// Hermetic provider default: see meetingJoin.test.js (local .env pollution).
+process.env.RECORDING_PROVIDER = "disabled";
 
 const { resetEnvCache } = require("../src/config/env");
 
@@ -106,6 +108,7 @@ describe("meeting join optimization", () => {
 
   beforeEach(() => {
     resetEnvCache();
+    process.env.RECORDING_PROVIDER = "disabled";
     process.env.JWT_SECRET = "test-jwt-secret-do-not-use-in-prod";
     process.env.LIVEKIT_URL = "wss://livekit.test.example.com";
     process.env.LIVEKIT_API_KEY = "test-livekit-key";
@@ -121,6 +124,7 @@ describe("meeting join optimization", () => {
     MeetingParticipant.findOne = originalFindOne;
     delete process.env.JOIN_RATE_LIMIT_MAX;
     delete process.env.JOIN_RATE_LIMIT_WINDOW_MS;
+    process.env.RECORDING_PROVIDER = "disabled";
     resetEnvCache();
     joinRateLimit.resetForTests();
   });

@@ -10,6 +10,7 @@ const { authorizeMeetingAccess } = require("../services/meetingAccessService");
 const { sendMessage, getHistory } = require("../services/chatService");
 const { validateMeetingIdParam } = require("../validation/chatValidation");
 const { takeSendBudget } = require("./sendBudget");
+const { setRealtimePublisher, setRoomCloser } = require("./realtime");
 const chatMetrics = require("../utils/chatMetrics");
 const { resolveChatLimits } = require("../constants/chatLimits");
 
@@ -29,6 +30,12 @@ const { resolveChatLimits } = require("../constants/chatLimits");
 //     clientMessageId, text, createdAt } to the meeting room, and
 //     meeting:revoked { meetingId, reason } when the lifecycle owner
 //     revokes access through revokeMeetingAccess().
+//   Phase 3 adds server emits to the meeting room only (authorized
+//   members): meeting:ended { meetingId, endedAt },
+//   recording:status { meetingId, recording }, and recording:ready
+//   { meetingId, recordingId, state }. Missed events are recovered via
+//   the authorized GET status/history endpoints; exactly-once delivery
+//   is never promised.
 //
 // Deliberate single-instance default: the in-process adapter fans out to
 // sockets on this process only. Horizontal readiness needs
@@ -312,13 +319,15 @@ function attachMeetingSockets(httpServer) {
     });
   });
 
-  // Revocation hook for the meeting-lifecycle owner (removal/end writer).
+  // Revocation hook for the meeting-lifecycle owner (removal writer).
   // Emits meeting:revoked and force-leaves affected sockets on THIS
-  // process. INTEGRATION GAP: no removal/end writer exists in the repo
-  // yet, and cross-replica revocation needs the Redis adapter — so until
-  // the lifecycle owner wires this, already-joined sockets are denied on
-  // their next join/send/history action but may still receive live
-  // broadcasts meanwhile. Do not claim complete revocation support.
+  // process. Meeting end uses closeMeetingRoomById() instead (emits
+  // meeting:ended via the lifecycle service before eviction).
+  // MULTI-INSTANCE GAP: cross-replica eviction needs the Redis
+  // adapter + sticky routing (deployment-owner prerequisite, not
+  // claimed here) — already-joined sockets on other replicas are
+  // denied on their next join/send/history action but may still
+  // receive live broadcasts meanwhile.
   // O(all sockets) scan, but only on rare lifecycle revocations —
   // never on the message path.
   function revokeMeetingAccess({ meetingIdParam, userId, reason }) {
@@ -373,7 +382,43 @@ function attachMeetingSockets(httpServer) {
     });
   }
 
-  return { io, close, revokeMeetingAccess };
+  // Phase 3 lifecycle wiring: the services publish domain events
+  // through the realtime registry without importing this module.
+  // meeting:ended is published by the lifecycle service BEFORE this
+  // eviction runs, so evicted sockets still receive it.
+  function closeMeetingRoomById(meetingIdParam) {
+    let room;
+    try {
+      validateMeetingIdParam(meetingIdParam);
+      room = roomNameFor(meetingIdParam);
+    } catch (_unused) {
+      return 0;
+    }
+    let removed = 0;
+    for (const [, s] of io.sockets.sockets) {
+      if (!s.rooms.has(room)) {
+        continue;
+      }
+      try {
+        s.leave(room);
+        removed += 1;
+      } catch (_unused) {
+        // Leave failures must not block remaining evictions.
+      }
+      if (s.data.rooms) {
+        s.data.rooms.delete(meetingIdParam);
+      }
+    }
+    logger.info("meeting_room_closed", { removed });
+    return removed;
+  }
+
+  setRealtimePublisher((room, event, payload) => {
+    io.to(room).emit(event, payload);
+  });
+  setRoomCloser((meetingIdParam) => closeMeetingRoomById(meetingIdParam));
+
+  return { io, close, revokeMeetingAccess, closeMeetingRoomById };
 }
 
 module.exports = { attachMeetingSockets };

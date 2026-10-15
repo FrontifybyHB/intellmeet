@@ -101,7 +101,55 @@ async function authorizeJoin({ meetingIdParam, userId }) {
   }
 
   const roomName = roomNameFor(meeting._id);
-  const issued = mintJoinToken({ identity: String(userId), roomName });
+  // Consent-safe admission: when a nonterminal capture is active and
+  // this joiner has not approved the current recording notice, issue a
+  // subscribe-only token so no new media can enter the captured source
+  // before consent. The probe is availability-preserving (never
+  // throws): join itself always stays possible so the user can still
+  // reach the consent screen. Existing tokens are TTL-bounded; a
+  // consent approval does not retro-upgrade an issued token.
+  // Perf: skip the capture probe entirely when the recording provider
+  // is disabled (no capture can exist) so the hot join path pays zero
+  // extra queries. On probe/consent-read failure with the provider
+  // enabled, fail closed to subscribe-only: join stays possible but no
+  // new media enters a possibly-captured source before consent.
+  let canPublish = true;
+  try {
+    const { getEnv } = require("../config/env");
+    if (getEnv().recordingProvider === "disabled") {
+      canPublish = true;
+    } else {
+      const { hasActiveCapture } = require("./recordingService");
+      if (await hasActiveCapture(meetingIdParam)) {
+        const RecordingConsent = require("../models/RecordingConsent");
+        const consent = await RecordingConsent.findOne(
+          {
+            meetingId: meeting._id,
+            userId,
+            noticeVersion: getEnv().recordingNoticeVersion,
+            recording: "approved",
+          },
+          { _id: 1 }
+        ).lean();
+        if (!consent) {
+          canPublish = false;
+        }
+      }
+    }
+  } catch (_unused) {
+    try {
+      const { getEnv: getEnvSafe } = require("../config/env");
+      canPublish = getEnvSafe().recordingProvider === "disabled";
+    } catch (_ignored) {
+      canPublish = false;
+    }
+  }
+  const issued = mintJoinToken({
+    identity: String(userId),
+    roomName,
+    canPublish,
+    canPublishData: canPublish,
+  });
 
   return {
     roomName: issued.roomName,

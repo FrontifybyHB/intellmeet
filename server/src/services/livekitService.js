@@ -14,7 +14,13 @@ function base64UrlEncodeJson(value) {
 // Minimal LiveKit-style room token signer (HS256 JWT). Keeps the
 // LiveKit API secret server-side; only the short-lived token is
 // returned to the client. Never logs tokens or secrets.
-function mintJoinToken({ identity, roomName, ttlSeconds, issuedAtSeconds }) {
+// canPublish/canPublishData default to true; the join path may pass
+// false for late joins during active capture when the joiner has not
+// approved the current recording notice (server-side admission gate —
+// never a client mute/UI control). roomAdmin/recorder stay false for
+// ordinary participant tokens: Egress requires server-side recording
+// permission that is never granted to participants.
+function mintJoinToken({ identity, roomName, ttlSeconds, issuedAtSeconds, canPublish, canPublishData }) {
   const { livekitUrl, livekitApiKey, livekitApiSecret } = getEnv();
   if (!livekitUrl || !livekitApiKey || !livekitApiSecret) {
     throw new AppError(
@@ -41,9 +47,9 @@ function mintJoinToken({ identity, roomName, ttlSeconds, issuedAtSeconds }) {
     grants: {
       roomJoin: true,
       room: roomName,
-      canPublish: true,
+      canPublish: canPublish !== false,
       canSubscribe: true,
-      canPublishData: true,
+      canPublishData: canPublishData !== false,
       roomAdmin: false,
       recorder: false,
     },
