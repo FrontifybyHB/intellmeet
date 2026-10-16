@@ -5,15 +5,26 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "test": "node --test tests/env.test.js tests/middleware.test.js tests/startup.test.js tests/auth.test.js tests/meetingJoin.test.js tests/meetingJoinOptimization.test.js tests/meetingChat.test.js tests/meetingRecording.test.js tests/meetingTranscription.test.js tests/meetingIntelligence.test.js tests/postMeetingIntegration.test.js tests/meetingManage.test.js tests/meetingShareLinks.test.js",
+    "worker:transcription": "node src/queues/transcriptionWorker.js",
+    "worker:intelligence": "node src/queues/intelligenceWorker.js"
   },
   "dependencies": {
+    "@google/genai": "^2.29.0",
+    "argon2": "^0.44.0",
+    "bcryptjs": "^3.0.3",
+    "bullmq": "^6.3.14",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "mongoose": "^8.9.5"
+    "ioredis": "^6.0.0",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^8.9.5",
+    "socket.io": "^4.8.4"
   },
   "devDependencies": {
-    "nodemon": "^3.1.7"
+    "nodemon": "^3.1.7",
+    "socket.io-client": "^4.8.4"
   }
 }
