@@ -9,8 +9,10 @@ const notFound = require("./middleware/notFound");
 const requestId = require("./middleware/requestId");
 const securityHeaders = require("./middleware/securityHeaders");
 const meetingsRoutes = require("./routes/meetings");
+const meetingLinksRoutes = require("./routes/meetingLinks");
 const webhooksRoutes = require("./routes/webhooks");
 const devLabRoutes = require("./routes/devLab");
+const authRoutes = require("./routes/auth");
 
 const app = express();
 const { clientUrl } = getEnv();
@@ -28,7 +30,36 @@ function corsOrigin(origin, callback) {
 
 app.use(requestId);
 app.use(securityHeaders);
-app.use(cors(clientUrl ? { origin: corsOrigin } : undefined));
+app.use(cors(clientUrl ? { origin: corsOrigin, credentials: true } : undefined));
+// Minimal cookie reader (no new dependency): parses Cookie header
+// into req.cookies for the HttpOnly auth transport. Values are never
+// logged.
+app.use((req, _res, next) => {
+  req.cookies = {};
+  try {
+    const header = req.headers && req.headers.cookie;
+    if (typeof header === "string" && header.length > 0) {
+      for (const part of header.split(";")) {
+        const idx = part.indexOf("=");
+        if (idx <= 0) {
+          continue;
+        }
+        const name = part.slice(0, idx).trim();
+        const value = part.slice(idx + 1).trim();
+        if (name && value && !(name in req.cookies)) {
+          try {
+            req.cookies[name] = decodeURIComponent(value);
+          } catch (_unused) {
+            req.cookies[name] = value;
+          }
+        }
+      }
+    }
+  } catch (_unused) {
+    req.cookies = {};
+  }
+  next();
+});
 app.use(express.json({ limit: "100kb" }));
 app.use(express.urlencoded({ limit: "100kb", extended: false }));
 
@@ -40,6 +71,8 @@ app.get(
 );
 
 app.use("/api/meetings", meetingsRoutes);
+app.use("/api/meeting-links", meetingLinksRoutes);
+app.use("/api/auth", authRoutes);
 // Provider webhooks verify by signature over raw bytes (route-scoped
 // raw parser inside the router) — never user JWT/CSRF auth.
 app.use("/api/webhooks", webhooksRoutes);

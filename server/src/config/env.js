@@ -5,6 +5,7 @@ const dotenv = require("dotenv");
 const { CHAT_LIMITS } = require("../constants/chatLimits");
 const { RECORDING_LIMITS } = require("../constants/recordingLimits");
 const { TRANSCRIPTION_LIMITS } = require("../constants/transcriptionLimits");
+const { INTELLIGENCE_LIMITS } = require("../constants/intelligenceLimits");
 
 dotenv.config();
 
@@ -118,6 +119,27 @@ function parseNoticeVersion(raw) {
   return raw;
 }
 
+// Cookie topology mode. Default "lax" is correct for same-site
+// deployments (frontend and API share a site; ports may differ).
+// "none" is an explicit, production-only cross-site mode
+// (SameSite=None + forced Secure); any other value, or "none"
+// outside production, fails startup. Cross-site deployments remain
+// subject to browser third-party-cookie blocking — CORS does not
+// bypass that (documented deployment limit, not a code fix).
+function parseCookieSameSite(raw, nodeEnv) {
+  if (raw === undefined || raw === null || raw === "") {
+    return "lax";
+  }
+  const v = String(raw).trim().toLowerCase();
+  if (v !== "lax" && v !== "none") {
+    throw new Error("COOKIE_SAMESITE must be one of lax, none.");
+  }
+  if (v === "none" && nodeEnv !== "production") {
+    throw new Error("COOKIE_SAMESITE=none requires NODE_ENV=production (Secure).");
+  }
+  return v;
+}
+
 function parseTranscriptionProvider(raw) {
   if (raw === undefined || raw === null || raw === "") {
     // Fail closed: without an explicit provider choice, transcription
@@ -129,6 +151,19 @@ function parseTranscriptionProvider(raw) {
     return raw;
   }
   throw new Error("TRANSCRIPTION_PROVIDER must be one of disabled, mock, live.");
+}
+
+function parseIntelligenceProvider(raw) {
+  if (raw === undefined || raw === null || raw === "") {
+    // Fail closed: without an explicit provider choice, intelligence
+    // enqueue/processing returns 503 INTEGRATION_BLOCKER. "mock" is for
+    // tests (deterministic, labeled); "live" requires GEMINI_API_KEY.
+    return "disabled";
+  }
+  if (raw === "disabled" || raw === "mock" || raw === "live") {
+    return raw;
+  }
+  throw new Error("INTELLIGENCE_PROVIDER must be one of disabled, mock, live.");
 }
 
 function parseGeminiModel(raw) {
@@ -156,6 +191,7 @@ function loadEnv(source) {
     nodeEnv,
     port: parsePort(envSource.PORT),
     clientUrl: parseClientUrl(envSource.CLIENT_URL, nodeEnv),
+    cookieSameSite: parseCookieSameSite(envSource.COOKIE_SAMESITE, nodeEnv),
     mongoUri: parseMongoUri(envSource.MONGODB_URI),
     jwtSecret: parseOptionalString(envSource.JWT_SECRET),
     livekitUrl: parseOptionalString(envSource.LIVEKIT_URL),
@@ -409,6 +445,107 @@ function loadEnv(source) {
         name: "TRANSCRIPT_MAX_CALLS_PER_DAY",
       }
     ),
+    intelligenceProvider: parseIntelligenceProvider(
+      envSource.INTELLIGENCE_PROVIDER
+    ),
+    intelWorkerConcurrency: parseBoundedInt(
+      envSource.INTEL_WORKER_CONCURRENCY,
+      {
+        def: INTELLIGENCE_LIMITS.WORKER_CONCURRENCY_DEFAULT,
+        min: INTELLIGENCE_LIMITS.WORKER_CONCURRENCY_MIN,
+        max: INTELLIGENCE_LIMITS.WORKER_CONCURRENCY_MAX,
+        name: "INTEL_WORKER_CONCURRENCY",
+      }
+    ),
+    intelQueueMaxWaiting: parseBoundedInt(
+      envSource.INTEL_QUEUE_MAX_WAITING,
+      {
+        def: INTELLIGENCE_LIMITS.QUEUE_MAX_WAITING_DEFAULT,
+        min: INTELLIGENCE_LIMITS.QUEUE_MAX_WAITING_MIN,
+        max: INTELLIGENCE_LIMITS.QUEUE_MAX_WAITING_MAX,
+        name: "INTEL_QUEUE_MAX_WAITING",
+      }
+    ),
+    intelJobAttempts: parseBoundedInt(envSource.INTEL_JOB_ATTEMPTS, {
+      def: INTELLIGENCE_LIMITS.JOB_ATTEMPTS_DEFAULT,
+      min: INTELLIGENCE_LIMITS.JOB_ATTEMPTS_MIN,
+      max: INTELLIGENCE_LIMITS.JOB_ATTEMPTS_MAX,
+      name: "INTEL_JOB_ATTEMPTS",
+    }),
+    intelStepTimeoutMs: parseBoundedInt(
+      envSource.INTEL_STEP_TIMEOUT_MS,
+      {
+        def: INTELLIGENCE_LIMITS.STEP_TIMEOUT_MS_DEFAULT,
+        min: INTELLIGENCE_LIMITS.STEP_TIMEOUT_MS_MIN,
+        max: INTELLIGENCE_LIMITS.STEP_TIMEOUT_MS_MAX,
+        name: "INTEL_STEP_TIMEOUT_MS",
+      }
+    ),
+    intelRunTimeoutMs: parseBoundedInt(
+      envSource.INTEL_RUN_TIMEOUT_MS,
+      {
+        def: INTELLIGENCE_LIMITS.RUN_TIMEOUT_MS_DEFAULT,
+        min: INTELLIGENCE_LIMITS.RUN_TIMEOUT_MS_MIN,
+        max: INTELLIGENCE_LIMITS.RUN_TIMEOUT_MS_MAX,
+        name: "INTEL_RUN_TIMEOUT_MS",
+      }
+    ),
+    intelMaxCallsPerDay: parseBoundedInt(
+      envSource.INTEL_MAX_CALLS_PER_DAY,
+      {
+        def: INTELLIGENCE_LIMITS.MAX_CALLS_PER_DAY_DEFAULT,
+        min: INTELLIGENCE_LIMITS.MAX_CALLS_PER_DAY_MIN,
+        max: INTELLIGENCE_LIMITS.MAX_CALLS_PER_DAY_MAX,
+        name: "INTEL_MAX_CALLS_PER_DAY",
+      }
+    ),
+    intelWindowChars: parseBoundedInt(envSource.INTEL_WINDOW_CHARS, {
+      def: INTELLIGENCE_LIMITS.WINDOW_CHARS_DEFAULT,
+      min: INTELLIGENCE_LIMITS.WINDOW_CHARS_MIN,
+      max: INTELLIGENCE_LIMITS.WINDOW_CHARS_MAX,
+      name: "INTEL_WINDOW_CHARS",
+    }),
+    intelMaxWindows: parseBoundedInt(envSource.INTEL_MAX_WINDOWS, {
+      def: INTELLIGENCE_LIMITS.MAX_WINDOWS_DEFAULT,
+      min: INTELLIGENCE_LIMITS.MAX_WINDOWS_MIN,
+      max: INTELLIGENCE_LIMITS.MAX_WINDOWS_MAX,
+      name: "INTEL_MAX_WINDOWS",
+    }),
+    intelMaxSourceBytes: parseBoundedInt(
+      envSource.INTEL_MAX_SOURCE_BYTES,
+      {
+        def: INTELLIGENCE_LIMITS.MAX_SOURCE_BYTES_DEFAULT,
+        min: INTELLIGENCE_LIMITS.MAX_SOURCE_BYTES_MIN,
+        max: INTELLIGENCE_LIMITS.MAX_SOURCE_BYTES_MAX,
+        name: "INTEL_MAX_SOURCE_BYTES",
+      }
+    ),
+    intelMaxSourceSegments: parseBoundedInt(
+      envSource.INTEL_MAX_SOURCE_SEGMENTS,
+      {
+        def: TRANSCRIPTION_LIMITS.MAX_SEGMENTS_TOTAL_DEFAULT,
+        min: 10,
+        max: 10000,
+        name: "INTEL_MAX_SOURCE_SEGMENTS",
+      }
+    ),
+    // Shared project-wide daily Gemini call budget across the Phase 4
+    // and Phase 5 pipelines (see queues/geminiBudget.js). Default 700
+    // = TRANSCRIPT_MAX_CALLS_PER_DAY default (500) + INTEL default
+    // (200): preserves current admission while capping joint spend.
+    // Size against the project's actual Gemini quota; the phase caps
+    // subdivide it, they do not grant independent quota.
+    geminiSharedMaxCallsPerDay: parseBoundedInt(
+      envSource.GEMINI_SHARED_MAX_CALLS_PER_DAY,
+      {
+        def:
+          TRANSCRIPTION_LIMITS.MAX_CALLS_PER_DAY_DEFAULT +
+          INTELLIGENCE_LIMITS.MAX_CALLS_PER_DAY_DEFAULT,
+        min: 1,
+        max: 200000,
+        name: "GEMINI_SHARED_MAX_CALLS_PER_DAY",
+      }
+    ),
   };
 }
 
@@ -428,6 +565,7 @@ function getSafeEnvSummary(env) {
     nodeEnv: resolved.nodeEnv,
     port: resolved.port,
     clientUrlConfigured: Boolean(resolved.clientUrl),
+    cookieSameSite: resolved.cookieSameSite,
     mongoConfigured: Boolean(resolved.mongoUri),
     jwtConfigured: Boolean(resolved.jwtSecret),
     livekitConfigured: Boolean(
@@ -436,6 +574,7 @@ function getSafeEnvSummary(env) {
     recordingProvider: resolved.recordingProvider,
     recordingStorageConfigured: Boolean(resolved.recordingOutputBucket),
     transcriptionProvider: resolved.transcriptionProvider,
+    intelligenceProvider: resolved.intelligenceProvider,
     geminiConfigured: Boolean(resolved.geminiApiKey),
     redisConfigured: Boolean(resolved.redisUrl),
   };

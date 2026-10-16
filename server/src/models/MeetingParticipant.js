@@ -28,6 +28,13 @@ const meetingParticipantSchema = new mongoose.Schema(
 );
 
 meetingParticipantSchema.index({ meetingId: 1, userId: 1 }, { unique: true });
+// Reverse leg for entitled meeting history (meetings where the user is
+// an admitted participant): userId-first lookup, then bounded $in on
+// Meeting._id. Without this, history would scan by meeting.
+meetingParticipantSchema.index({ userId: 1, meetingId: 1 });
+// Paginated entitlement scan (newest-first _id cursor): supports users
+// with more than one batch of memberships without silent truncation.
+meetingParticipantSchema.index({ userId: 1, status: 1, _id: -1 });
 
 module.exports =
   mongoose.models.MeetingParticipant ||

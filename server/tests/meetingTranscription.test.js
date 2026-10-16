@@ -51,6 +51,7 @@ const Recording = require("../src/models/Recording");
 const RecordingConsent = require("../src/models/RecordingConsent");
 const TranscriptSegment = require("../src/models/TranscriptSegment");
 const WebhookEvent = require("../src/models/WebhookEvent");
+const User = require("../src/models/User");
 const recordingProvider = require("../src/services/recordingProvider");
 const geminiProvider = require("../src/services/geminiTranscriptionProvider");
 const transcriptionAudio = require("../src/services/transcriptionAudio");
@@ -65,6 +66,11 @@ function signAuthToken(sub) {
   const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
   const payload = {
     sub,
+    purpose: "access",
+    iss: "intellmeet",
+    aud: "intellmeet-app",
+    ver: 0,
+    jti: crypto.randomUUID(),
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 3600,
   };
@@ -76,12 +82,51 @@ function signAuthToken(sub) {
   return `${header}.${body}.${sig}`;
 }
 
+// Stateless auth reads the current User row: every minted test token
+// needs a matching active/version-0 User, seeded wherever ids are made.
+async function ensureUsers(ids) {
+  for (const id of ids) {
+    await User.updateOne(
+      { _id: id },
+      {
+        $setOnInsert: {
+          name: "test user",
+          email: `test-${String(id)}@example.com`,
+          role: "user",
+          status: "active",
+          authVersion: 0,
+        },
+      },
+      { upsert: true }
+    );
+  }
+}
+
+// Cookie-only test credentials: the hand-minted access JWT travels as
+// the im_at cookie, with the login-context-bound double-submit CSRF
+// value (computed from the token's jti, as the server does).
+function csrfFor(token) {
+  const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
+  return crypto
+    .createHmac("sha256", process.env.JWT_SECRET)
+    .update(`csrf:${payload.jti || "anonymous"}`)
+    .digest("base64url");
+}
+
+function authHeaders(token) {
+  if (!token) {
+    return {};
+  }
+  const csrf = csrfFor(token);
+  return { cookie: `im_at=${token}; im_csrf=${csrf}`, "x-csrf-token": csrf };
+}
+
 async function api(method, path, token, body, query) {
   const url = query ? `${baseUrl}${path}?${query}` : `${baseUrl}${path}`;
   const res = await fetch(url, {
     method,
     headers: {
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...authHeaders(token),
       ...(body !== undefined ? { "content-type": "application/json" } : {}),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -108,11 +153,13 @@ async function makeWorld({ members, transfer, recordingState, meetingStatus, for
     hostId,
     status: (meetingStatus || "ended"),
   });
+  await ensureUsers([hostId]);
   const host = { id: hostId, token: signAuthToken(hostId.toString()) };
   const users = {};
   for (const name of members || []) {
     const userId = new mongoose.Types.ObjectId();
     users[name] = { id: userId, token: signAuthToken(userId.toString()) };
+    await ensureUsers([userId]);
     await MeetingParticipant.create({ meetingId: meeting._id, userId, status: "admitted" });
   }
   const consentValue = transfer === undefined ? "approved" : transfer;
@@ -184,6 +231,7 @@ describe("phase 4 transcription", () => {
       RecordingConsent.syncIndexes(),
       TranscriptSegment.syncIndexes(),
       WebhookEvent.syncIndexes(),
+      User.syncIndexes(),
     ]);
     const redis = transcriptionQueue.getConnection();
     await redis.flushdb();
@@ -236,6 +284,7 @@ describe("phase 4 transcription", () => {
       MeetingParticipant.deleteMany({}),
       Meeting.deleteMany({}),
       WebhookEvent.deleteMany({}),
+      User.deleteMany({}),
     ]);
   });
 
@@ -243,7 +292,9 @@ describe("phase 4 transcription", () => {
     const { meeting, host, users, recording } = await makeWorld({ members: ["a"] });
     const id = meeting._id.toString();
     const rid = recording._id.toString();
-    const outsider = signAuthToken(new mongoose.Types.ObjectId().toString());
+    const outsiderId = new mongoose.Types.ObjectId();
+    await ensureUsers([outsiderId]);
+    const outsider = signAuthToken(outsiderId.toString());
 
     assert.equal((await api("POST", txPath(id, rid), outsider)).status, 403);
     assert.equal((await api("POST", txPath(id, rid), users.a.token)).status, 403);
@@ -381,7 +432,9 @@ describe("phase 4 transcription", () => {
     assert.equal(page2.json.segments[0].text, "Namaste, chalo shuru karte hain");
 
     // Outsider cannot read; replaying the run is idempotent.
-    const outsider = signAuthToken(new mongoose.Types.ObjectId().toString());
+    const outsiderId = new mongoose.Types.ObjectId();
+    await ensureUsers([outsiderId]);
+    const outsider = signAuthToken(outsiderId.toString());
     assert.equal(
       (await api("GET", `/api/meetings/${id}/recordings/${rid}/transcript`, outsider)).status,
       403
@@ -750,6 +803,56 @@ describe("phase 4 transcription", () => {
     const second = await transcriptionQueue.addTranscriptionJob({ recordingId: rid, runId, runVersion });
     assert.equal(first.id, second.id);
     assert.equal(first.id, `tr:${rid}:${runVersion}`);
+  });
+
+  it("worker-lifecycle recovery loop requeues a stranded intent without manual reconciler calls", async () => {
+    const { startRecoveryScheduler, stopRecoveryScheduler } = require("../src/queues/transcriptionWorker");
+    const world = await makeWorld({ members: [] });
+    const rid = world.recording._id.toString();
+    const enq = await api(
+      "POST",
+      txPath(world.meeting._id.toString(), rid),
+      world.host.token
+    );
+    const { runId, runVersion } = enq.json.status.transcription;
+    // Simulate crash/job deletion after the Mongo commit: intent is
+    // pending with an aged marker and the queue holds no job.
+    await Recording.findOneAndUpdate(
+      { _id: rid },
+      {
+        $set: {
+          "transcription.state": "pending_enqueue",
+          "transcription.enqueuedAt": new Date(Date.now() - 120000),
+          "transcription.leaseUntil": null,
+        },
+      }
+    ).lean();
+    const queue = transcriptionQueue.getQueue();
+    const jobId = transcriptionQueue.jobIdFor({ recordingId: rid, runVersion });
+    const doomed = await queue.getJob(jobId);
+    if (doomed) {
+      await doomed.remove();
+    }
+    assert.equal(await queue.getWaitingCount(), 0);
+    // Lifecycle path only: the scheduler tick (not a direct
+    // reconciler call) must recover the intent.
+    await startRecoveryScheduler({ intervalMs: 200, jitterMs: 0 });
+    try {
+      let recovered = null;
+      for (let i = 0; i < 100; i += 1) {
+        const current = await Recording.findById(rid, { transcription: 1 }).lean();
+        if (current && current.transcription && current.transcription.state === "queued") {
+          recovered = current;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      assert.ok(recovered, "scheduler did not requeue the stranded intent");
+      assert.ok((await queue.getWaitingCount()) >= 1);
+      void runId;
+    } finally {
+      stopRecoveryScheduler();
+    }
   });
 
   it("commit/queue race redelivers instead of consuming; stranded runs requeue", async () => {

@@ -69,6 +69,11 @@ function signAuthToken(sub) {
   );
   const payload = {
     sub,
+    purpose: "access",
+    iss: "intellmeet",
+    aud: "intellmeet-app",
+    ver: 0,
+    jti: crypto.randomUUID(),
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 3600,
   };
@@ -93,6 +98,7 @@ async function main() {
   const { attachMeetingSockets } = require("../src/sockets/meetingSockets");
   const Meeting = require("../src/models/Meeting");
   const MeetingParticipant = require("../src/models/MeetingParticipant");
+  const User = require("../src/models/User");
   const ChatMessage = require("../src/models/ChatMessage");
   const chatMetrics = require("../src/utils/chatMetrics");
 
@@ -114,9 +120,11 @@ async function main() {
     );
   }
   const users = [];
+  await User.syncIndexes();
   for (let u = 0; u < userCount; u += 1) {
     const userId = new mongoose.Types.ObjectId();
     users.push({ userId, token: signAuthToken(userId.toString()) });
+    await User.updateOne({ _id: userId }, { $setOnInsert: { name: "load", email: `load-${String(userId)}@example.com`, role: "user", status: "active", authVersion: 0 } }, { upsert: true });
     for (const m of meetings) {
       await MeetingParticipant.create({
         meetingId: m._id,
@@ -135,7 +143,7 @@ async function main() {
   const clients = [];
   async function connect(user) {
     const socket = Client(baseUrl, {
-      auth: { token: user.token },
+      extraHeaders: { cookie: `im_at=${user.token}` },
       transports: ["websocket"],
     });
     await new Promise((resolve, reject) => {
@@ -298,7 +306,7 @@ async function main() {
     // round, so every rejoin exercises a real newer-than-cursor repair.
     async function latestCursor() {
       const res = await fetch(`${baseUrl}/api/meetings/${meetingId}/messages`, {
-        headers: { authorization: `Bearer ${users[1].token}` },
+        headers: { cookie: `im_at=${users[1].token}` },
       });
       const body = await res.json();
       return body.newestCursor || null;
@@ -351,7 +359,7 @@ async function main() {
       }
       const res = await fetch(
         `${baseUrl}/api/meetings/${meetingId}/messages?${params.toString()}`,
-        { headers: { authorization: `Bearer ${users[1].token}` } }
+        { headers: { cookie: `im_at=${users[1].token}` } }
       );
       const body = await res.json();
       for (const m of body.messages || []) {

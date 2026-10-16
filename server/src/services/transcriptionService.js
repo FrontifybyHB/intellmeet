@@ -304,17 +304,6 @@ async function checkTranscriptionEligibility({ meetingId, recording }) {
   };
 }
 
-function sourceFingerprint(source) {
-  return [
-    source.bucket,
-    source.key,
-    source.format || "",
-    source.providerEgressId || "",
-    Number.isFinite(source.bytes) ? source.bytes : "",
-    Number.isFinite(source.durationMs) ? source.durationMs : "",
-  ].join("|");
-}
-
 // --- Enqueue -----------------------------------------------------------
 // Idempotent: a nonterminal run is returned as-is; a terminal run is
 // never mutated — retry creates a NEW run version.
@@ -668,7 +657,6 @@ module.exports = {
   serializeTranscriptionStatus,
   transitionTranscription,
   checkTranscriptionEligibility,
-  sourceFingerprint,
   enqueueTranscription,
   maybeAutoEnqueue,
   cancelTranscription,

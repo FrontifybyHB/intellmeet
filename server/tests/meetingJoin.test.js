@@ -30,6 +30,7 @@ resetEnvCache();
 const app = require("../src/app");
 const Meeting = require("../src/models/Meeting");
 const MeetingParticipant = require("../src/models/MeetingParticipant");
+const User = require("../src/models/User");
 
 let server;
 let baseUrl;
@@ -40,6 +41,11 @@ function signAuthToken(sub, overrides) {
   );
   const payload = {
     sub,
+    purpose: "access",
+    iss: "intellmeet",
+    aud: "intellmeet-app",
+    ver: 0,
+    jti: crypto.randomUUID(),
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 3600,
     ...(overrides || {}),
@@ -71,6 +77,7 @@ let originalFindById;
 let originalFindOne;
 let originalCreate;
 let originalUpdateOne;
+let originalUserFindById;
 
 function queryLike(doc) {
   return { lean: async () => doc };
@@ -90,11 +97,30 @@ function stubDb({ meeting, participant }) {
   };
 }
 
+// Cookie-only test credentials: the hand-minted access JWT travels as
+// the im_at cookie, with the login-context-bound double-submit CSRF
+// value (computed from the token's jti, as the server does).
+function csrfFor(token) {
+  const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
+  return crypto
+    .createHmac("sha256", process.env.JWT_SECRET)
+    .update(`csrf:${payload.jti || "anonymous"}`)
+    .digest("base64url");
+}
+
+function authHeaders(token) {
+  if (!token) {
+    return {};
+  }
+  const csrf = csrfFor(token);
+  return { cookie: `im_at=${token}; im_csrf=${csrf}`, "x-csrf-token": csrf };
+}
+
 function postJoin(meetingId, token, body) {
   return fetch(`${baseUrl}/api/meetings/${meetingId}/join`, {
     method: "POST",
     headers: {
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...authHeaders(token),
       "content-type": "application/json",
     },
     body: JSON.stringify(body || {}),
@@ -107,6 +133,7 @@ describe("POST /api/meetings/:id/join", () => {
     originalFindOne = MeetingParticipant.findOne;
     originalCreate = Meeting.create;
     originalUpdateOne = Meeting.updateOne;
+    originalUserFindById = User.findById;
     await new Promise((resolve) => {
       server = app.listen(0, "127.0.0.1", resolve);
     });
@@ -117,6 +144,7 @@ describe("POST /api/meetings/:id/join", () => {
   after(async () => {
     Meeting.findById = originalFindById;
     MeetingParticipant.findOne = originalFindOne;
+    User.findById = originalUserFindById;
     await new Promise((resolve, reject) => {
       server.close((err) => (err ? reject(err) : resolve()));
     });
@@ -129,6 +157,12 @@ describe("POST /api/meetings/:id/join", () => {
     process.env.LIVEKIT_URL = "wss://livekit.test.example.com";
     process.env.LIVEKIT_API_KEY = "test-livekit-key";
     process.env.LIVEKIT_API_SECRET = "test-livekit-secret-do-not-use";
+    // Stateless auth reads the current User row: stub active/version-0
+    // (matches test tokens) so these stay hermetic. Token-policy
+    // behavior (purpose/issuer/expiry/version) is exercised for real.
+    // Re-apply every test: afterEach restores the original.
+    User.findById = () =>
+      queryLike({ status: "active", role: "user", authVersion: 0 });
   });
 
   afterEach(() => {
@@ -137,6 +171,7 @@ describe("POST /api/meetings/:id/join", () => {
     Meeting.create = originalCreate;
     Meeting.updateOne = originalUpdateOne;
     delete MeetingParticipant.create;
+    User.findById = originalUserFindById;
   });
 
   it("issues a token for an admitted member", async () => {

@@ -74,6 +74,7 @@ resetEnvCache();
 const app = require("../src/app");
 const Meeting = require("../src/models/Meeting");
 const MeetingParticipant = require("../src/models/MeetingParticipant");
+const User = require("../src/models/User");
 const metrics = require("../src/utils/joinMetrics");
 const joinRateLimit = require("../src/middleware/joinRateLimit");
 
@@ -83,6 +84,11 @@ function signAuthToken(sub) {
   );
   const payload = {
     sub,
+    purpose: "access",
+    iss: "intellmeet",
+    aud: "intellmeet-app",
+    ver: 0,
+    jti: crypto.randomUUID(),
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 3600,
   };
@@ -131,6 +137,12 @@ async function main() {
       dbQueries += 1;
       return { lean: async () => admitted };
     };
+    // Stateless auth reads the User row: stub active/version-0 (the
+    // measured cost stays Express + auth-verify + signing).
+    User.findById = () => {
+      dbQueries += 1;
+      return { lean: async () => ({ status: "active", role: "user", authVersion: 0 }) };
+    };
     for (let i = 0; i < N; i += 1) {
       const userId = new mongoose.Types.ObjectId();
       plan.push({
@@ -153,9 +165,11 @@ async function main() {
       meetings.push(m);
     }
     const users = [];
+    await User.syncIndexes();
     for (let u = 0; u < Math.max(1, USERS); u += 1) {
       const userId = new mongoose.Types.ObjectId();
       users.push({ userId, token: signAuthToken(userId.toString()) });
+      await User.updateOne({ _id: userId }, { $setOnInsert: { name: "load", email: `load-${String(userId)}@example.com`, role: "user", status: "active", authVersion: 0 } }, { upsert: true });
     }
     // One admitted membership per (meeting, user) pair used below.
     const needPairs = new Map();
@@ -218,10 +232,11 @@ async function main() {
     try {
       const res = await fetch(`${baseUrl}/api/meetings/${job.meetingId}/join`, {
         method: "POST",
-        headers: {
-          authorization: `Bearer ${job.token}`,
-          "content-type": "application/json",
-        },
+        headers: (() => {
+          const payload = JSON.parse(Buffer.from(job.token.split(".")[1], "base64url").toString("utf8"));
+          const csrf = crypto.createHmac("sha256", process.env.JWT_SECRET).update(`csrf:${payload.jti || "anonymous"}`).digest("base64url");
+          return { cookie: `im_at=${job.token}; im_csrf=${csrf}`, "x-csrf-token": csrf, "content-type": "application/json" };
+        })(),
         body: "{}",
       });
       status = res.status;

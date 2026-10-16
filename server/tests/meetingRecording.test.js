@@ -46,6 +46,7 @@ const MeetingParticipant = require("../src/models/MeetingParticipant");
 const Recording = require("../src/models/Recording");
 const RecordingConsent = require("../src/models/RecordingConsent");
 const WebhookEvent = require("../src/models/WebhookEvent");
+const User = require("../src/models/User");
 const provider = require("../src/services/recordingProvider");
 const recordingMetrics = require("../src/utils/recordingMetrics");
 const realtime = require("../src/sockets/realtime");
@@ -60,6 +61,11 @@ function signAuthToken(sub, overrides) {
   );
   const payload = {
     sub,
+    purpose: "access",
+    iss: "intellmeet",
+    aud: "intellmeet-app",
+    ver: 0,
+    jti: crypto.randomUUID(),
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 3600,
     ...(overrides || {}),
@@ -91,11 +97,30 @@ function signWebhookToken(rawBody) {
   return `${header}.${payload}.${sig}`;
 }
 
+// Cookie-only test credentials: the hand-minted access JWT travels as
+// the im_at cookie, with the login-context-bound double-submit CSRF
+// value (computed from the token's jti, as the server does).
+function csrfFor(token) {
+  const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
+  return crypto
+    .createHmac("sha256", process.env.JWT_SECRET)
+    .update(`csrf:${payload.jti || "anonymous"}`)
+    .digest("base64url");
+}
+
+function authHeaders(token) {
+  if (!token) {
+    return {};
+  }
+  const csrf = csrfFor(token);
+  return { cookie: `im_at=${token}; im_csrf=${csrf}`, "x-csrf-token": csrf };
+}
+
 async function api(method, path, token, body) {
   const res = await fetch(`${baseUrl}${path}`, {
     method,
     headers: {
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...authHeaders(token),
       ...(body !== undefined ? { "content-type": "application/json" } : {}),
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -168,7 +193,7 @@ function egressEvent({ id, name, roomName, egressId, status }) {
 function connectClient(token) {
   return new Promise((resolve, reject) => {
     const socket = Client(baseUrl, {
-      auth: token ? { token } : {},
+      extraHeaders: token ? { cookie: `im_at=${token}` } : {},
       transports: ["websocket"],
     });
     socket.once("connect", () => resolve(socket));
@@ -185,6 +210,26 @@ function emitAck(socket, event, payload) {
   });
 }
 
+// Stateless auth reads the current User row: every minted test token
+// needs a matching active/version-0 User, seeded wherever ids are made.
+async function ensureUsers(ids) {
+  for (const id of ids) {
+    await User.updateOne(
+      { _id: id },
+      {
+        $setOnInsert: {
+          name: "test user",
+          email: `test-${String(id)}@example.com`,
+          role: "user",
+          status: "active",
+          authVersion: 0,
+        },
+      },
+      { upsert: true }
+    );
+  }
+}
+
 async function makeMeeting({ status, members } = {}) {
   const hostId = new mongoose.Types.ObjectId();
   const meeting = await Meeting.create({
@@ -192,11 +237,13 @@ async function makeMeeting({ status, members } = {}) {
     hostId,
     status: status || "live",
   });
+  await ensureUsers([hostId]);
   const host = { id: hostId, token: signAuthToken(hostId.toString()) };
   const users = {};
   for (const name of members || []) {
     const userId = new mongoose.Types.ObjectId();
     users[name] = { id: userId, token: signAuthToken(userId.toString()) };
+    await ensureUsers([userId]);
     await MeetingParticipant.create({
       meetingId: meeting._id,
       userId,
@@ -230,6 +277,7 @@ describe("phase 3 recording and termination", () => {
     await Recording.syncIndexes();
     await RecordingConsent.syncIndexes();
     await WebhookEvent.syncIndexes();
+    await User.syncIndexes();
     httpServer = http.createServer(app);
     sockets = attachMeetingSockets(httpServer);
     await new Promise((resolve) => httpServer.listen(0, "127.0.0.1", resolve));
@@ -264,12 +312,15 @@ describe("phase 3 recording and termination", () => {
     await RecordingConsent.deleteMany({});
     await MeetingParticipant.deleteMany({});
     await Meeting.deleteMany({});
+    await User.deleteMany({});
   });
 
   it("denies outsiders and non-hosts; blocks start without full consent", async () => {
     const { meeting, host, users } = await makeMeeting({ members: ["a"] });
     const id = meeting._id.toString();
-    const outsider = signAuthToken(new mongoose.Types.ObjectId().toString());
+    const outsiderId = new mongoose.Types.ObjectId();
+    await ensureUsers([outsiderId]);
+    const outsider = signAuthToken(outsiderId.toString());
 
     // Outsider cannot start, stop, list, consent, or end.
     assert.equal((await api("POST", `/api/meetings/${id}/recordings/start`, outsider)).status, 403);
@@ -335,12 +386,20 @@ describe("phase 3 recording and termination", () => {
     assert.equal(first.status, 200);
     assert.equal(second.status, 200);
     assert.equal(first.json.recording.id, second.json.recording.id);
-    assert.ok(second.json.resumed);
-    assert.equal(first.json.recording.state, "starting");
-    assert.ok(first.json.recording.providerEgressId);
-    assert.equal(first.json.recording.storage.bucket, "test-bucket");
-    assert.ok(first.json.recording.storage.key.indexOf("recordings/") === 0);
-    assert.equal(first.json.recording.consentSnapshot.requiredCount, 2);
+    // Exactly one creator under concurrency: array order does not
+    // predict the race winner, so either side may carry resumed:true —
+    // but never both and never neither (one attempt, loser resumes).
+    // The loser may serialize a pre-egress snapshot (same id, fields
+    // still converging), so completeness is asserted on the creator's
+    // response; GET recovers the converged state afterwards.
+    assert.ok(first.json.resumed !== second.json.resumed);
+    const creator = first.json.resumed ? second : first;
+    assert.equal(creator.json.resumed, false);
+    assert.equal(creator.json.recording.state, "starting");
+    assert.ok(creator.json.recording.providerEgressId);
+    assert.equal(creator.json.recording.storage.bucket, "test-bucket");
+    assert.ok(creator.json.recording.storage.key.indexOf("recordings/") === 0);
+    assert.equal(creator.json.recording.consentSnapshot.requiredCount, 2);
     assert.equal(await Recording.countDocuments({}), 1);
 
     // Cross-meeting recording id is not visible here.
@@ -421,6 +480,7 @@ describe("phase 3 recording and termination", () => {
     }
     // Late-admitted member without consent: cannot publish into capture.
     const lateId = new mongoose.Types.ObjectId();
+    await ensureUsers([lateId]);
     const lateToken = signAuthToken(lateId.toString());
     await MeetingParticipant.create({ meetingId: meeting._id, userId: lateId, status: "admitted" });
     const gated = await api("POST", `/api/meetings/${id}/join`, lateToken);
@@ -718,7 +778,9 @@ describe("phase 3 recording and termination", () => {
   it("ready access links need fresh auth; unready and outsiders denied", async () => {
     const { meeting, host, users } = await makeMeeting({ members: ["a"] });
     const id = meeting._id.toString();
-    const outsider = signAuthToken(new mongoose.Types.ObjectId().toString());
+    const outsiderId = new mongoose.Types.ObjectId();
+    await ensureUsers([outsiderId]);
+    const outsider = signAuthToken(outsiderId.toString());
     await approveAll(id, host, users);
     const started = await api("POST", `/api/meetings/${id}/recordings/start`, host.token);
     const rec = started.json.recording;

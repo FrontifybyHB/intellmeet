@@ -48,10 +48,26 @@ function workerIdentity() {
 // a timeout win leaves a bounded orphan: externalInFlight stays set
 // until the next fence check, and duplicate spend is bounded to one
 // un-checkpointed chunk (checkpoints converge on redelivery).
-function withDeadline(promise, ms, code) {
+// Bounded step deadline WITH provider cancellation. The controller
+// aborts on timeout so the provider HTTP wait ends promptly; the
+// provider documents abort as client-only (the request may still bill
+// server-side), so a timed-out call's outcome stays UNKNOWN: callers
+// keep idempotent writes + bounded retries, and exactly-once billing
+// is never claimed. A provider CANCELLED that races our own timeout
+// is normalized to the timeout code (run-cancellation is fenced
+// separately by the caller, never inferred from this code).
+function withStepDeadline(ms, code, invoke) {
+  const controller = new AbortController();
   let timer = null;
+  let timedOut = false;
   const timeout = new Promise((_, reject) => {
     timer = setTimeout(() => {
+      timedOut = true;
+      try {
+        controller.abort();
+      } catch (_unused) {
+        // Abort must never mask the timeout outcome.
+      }
       const err = new Error("Step timed out.");
       err.code = code;
       reject(err);
@@ -60,7 +76,15 @@ function withDeadline(promise, ms, code) {
       timer.unref();
     }
   });
-  return Promise.race([promise, timeout]).finally(() => {
+  const attempt = invoke(controller.signal).catch((err) => {
+    if (timedOut || (controller.signal.aborted && err && err.code === "CANCELLED")) {
+      const timeoutErr = new Error("Step timed out.");
+      timeoutErr.code = code;
+      throw timeoutErr;
+    }
+    throw err;
+  });
+  return Promise.race([attempt, timeout]).finally(() => {
     if (timer) {
       clearTimeout(timer);
     }
@@ -428,15 +452,17 @@ async function processTranscriptionJob(job, { workerId } = {}) {
           { _id: doc._id, "transcription.runId": runId },
           { $set: { "transcription.externalInFlight": true } }
         ).lean();
-        fileRef = await withDeadline(
-          provider.uploadAudioForTranscription({
-            bytes: chunkBytes,
-            mimeType: "audio/wav",
-            displayName: `meeting-${meetingId}-chunk-${chunk.index}`,
-            onCall: null,
-          }),
+        fileRef = await withStepDeadline(
           env.transcriptStepTimeoutMs,
-          "PROVIDER_TIMEOUT"
+          "PROVIDER_TIMEOUT",
+          (signal) =>
+            provider.uploadAudioForTranscription({
+              bytes: chunkBytes,
+              mimeType: "audio/wav",
+              displayName: `meeting-${meetingId}-chunk-${chunk.index}`,
+              signal,
+              onCall: null,
+            })
         );
         transcriptionMetrics.observeProviderLatency(Date.now() - stepStarted);
       } catch (err) {
@@ -460,15 +486,17 @@ async function processTranscriptionJob(job, { workerId } = {}) {
       const genStarted = Date.now();
       try {
         await onCall();
-        payload = await withDeadline(
-          provider.transcribeChunkAudio({
-            fileRef: { ...fileRef, mimeType: "audio/wav", audioHash: chunk.index === 0 ? audioHash : chunkHash, chunkAudioHash: chunkHash },
-            prompt,
-            responseSchema,
-            onCall: null,
-          }),
+        payload = await withStepDeadline(
           env.transcriptStepTimeoutMs,
-          "PROVIDER_TIMEOUT"
+          "PROVIDER_TIMEOUT",
+          (signal) =>
+            provider.transcribeChunkAudio({
+              fileRef: { ...fileRef, mimeType: "audio/wav", audioHash: chunk.index === 0 ? audioHash : chunkHash, chunkAudioHash: chunkHash },
+              prompt,
+              responseSchema,
+              signal,
+              onCall: null,
+            })
         );
         transcriptionMetrics.observeProviderLatency(Date.now() - genStarted);
       } catch (err) {

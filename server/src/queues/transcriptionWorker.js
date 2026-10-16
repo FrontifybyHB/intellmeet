@@ -22,6 +22,43 @@ const { processTranscriptionJob, workerIdentity } = require("../services/transcr
 
 let activeWorker = null;
 let ownedConnection = null;
+let recoveryScheduler = null;
+
+// Bounded durable-recovery loop for this worker's lifecycle (see
+// queues/recoveryScheduler.js for placement/bounds). Covers the
+// Mongo commit -> queue-add gap, missing intents, and stranded runs.
+async function startRecoveryScheduler({ intervalMs, jitterMs } = {}) {
+  if (recoveryScheduler) {
+    return recoveryScheduler;
+  }
+  const { startRecoveryScheduler: start } = require("./recoveryScheduler");
+  const {
+    reconcilePendingEnqueues,
+    reconcileMissingIntents,
+    reconcileStrandedRuns,
+  } = require("../services/transcriptionRecovery");
+  recoveryScheduler = start({
+    name: "transcription",
+    intervalMs,
+    jitterMs,
+    recover: async () => {
+      await reconcilePendingEnqueues({});
+      await reconcileMissingIntents({});
+      await reconcileStrandedRuns({});
+    },
+  });
+  return recoveryScheduler;
+}
+
+function stopRecoveryScheduler() {
+  if (recoveryScheduler) {
+    try {
+      recoveryScheduler.stop();
+    } finally {
+      recoveryScheduler = null;
+    }
+  }
+}
 
 async function startTranscriptionWorker({ connection } = {}) {
   if (activeWorker) {
@@ -113,9 +150,11 @@ async function runAsMain() {
     // Janitor failure must not block worker boot.
   }
   await startTranscriptionWorker();
+  await startRecoveryScheduler();
   for (const signal of ["SIGTERM", "SIGINT"]) {
     process.on(signal, () => {
       logger.info("transcription_worker_shutdown_signal", { signal });
+      stopRecoveryScheduler();
       stopTranscriptionWorker()
         .then(() => process.exit(0))
         .catch(() => process.exit(1));
@@ -132,4 +171,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { startTranscriptionWorker, stopTranscriptionWorker };
+module.exports = { startTranscriptionWorker, stopTranscriptionWorker, startRecoveryScheduler, stopRecoveryScheduler };

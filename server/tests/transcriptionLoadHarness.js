@@ -45,6 +45,7 @@ const app = require("../src/app");
 const { attachMeetingSockets } = require("../src/sockets/meetingSockets");
 const Meeting = require("../src/models/Meeting");
 const MeetingParticipant = require("../src/models/MeetingParticipant");
+const User = require("../src/models/User");
 const Recording = require("../src/models/Recording");
 const RecordingConsent = require("../src/models/RecordingConsent");
 const TranscriptSegment = require("../src/models/TranscriptSegment");
@@ -58,7 +59,7 @@ const transcriptionQueue = require("../src/queues/transcriptionQueue");
 function signToken(sub, secret) {
   const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
   const payload = Buffer.from(
-    JSON.stringify({ sub, iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600 })
+    JSON.stringify({ sub, purpose: "access", iss: "intellmeet", aud: "intellmeet-app", ver: 0, jti: crypto.randomUUID(), iat: Math.floor(Date.now() / 1000), exp: Math.floor(Date.now() / 1000) + 3600 })
   ).toString("base64url");
   const sig = crypto.createHmac("sha256", secret).update(`${header}.${payload}`).digest("base64url");
   return `${header}.${payload}.${sig}`;
@@ -98,12 +99,29 @@ async function main() {
   const baseUrl = `http://127.0.0.1:${httpServer.address().port}`;
   const mem0 = process.memoryUsage();
 
-  async function api(method, path, token, body) {
+  // Cookie-only credentials with the login-context-bound CSRF value.
+function csrfFor(token) {
+  const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
+  return crypto
+    .createHmac("sha256", process.env.JWT_SECRET)
+    .update(`csrf:${payload.jti || "anonymous"}`)
+    .digest("base64url");
+}
+
+function authHeaders(token) {
+  if (!token) {
+    return {};
+  }
+  const csrf = csrfFor(token);
+  return { cookie: `im_at=${token}; im_csrf=${csrf}`, "x-csrf-token": csrf };
+}
+
+async function api(method, path, token, body) {
     const started = process.hrtime.bigint();
     const res = await fetch(`${baseUrl}${path}`, {
       method,
       headers: {
-        ...(token ? { authorization: `Bearer ${token}` } : {}),
+        ...authHeaders(token),
         ...(body !== undefined ? { "content-type": "application/json" } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -130,6 +148,7 @@ async function main() {
   for (let i = 0; i < RECORDINGS; i += 1) {
     const hostId = new mongoose.Types.ObjectId();
     const memberId = new mongoose.Types.ObjectId();
+    for (const uid of [hostId, memberId]) { await User.updateOne({ _id: uid }, { $setOnInsert: { name: "load", email: `load-${String(uid)}@example.com`, role: "user", status: "active", authVersion: 0 } }, { upsert: true }); }
     const meeting = await Meeting.create({ title: `tx-load-${i}`, hostId, status: "ended" });
     await MeetingParticipant.create({ meetingId: meeting._id, userId: memberId, status: "admitted" });
     for (const uid of [hostId, memberId]) {

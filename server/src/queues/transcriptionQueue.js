@@ -113,12 +113,16 @@ function dayKey(now) {
   return `intellmeet:tx:calls:${date.toISOString().slice(0, 10)}`;
 }
 
-// Cluster-wide daily provider-call slot. Throws PROVIDER_QUOTA_EXHAUSTED
-// when the shared budget is spent (terminal for the run — a new day or
-// a raised budget needs a new run, never silent over-spend).
+// Cluster-wide daily provider-call slot: shared project budget first
+// (see queues/geminiBudget.js — Phase 4 and Phase 5 caps do not grant
+// independent quota), then the per-pipeline cap. Throws
+// PROVIDER_QUOTA_EXHAUSTED when either budget is spent (terminal for
+// the run — a new day or a raised budget needs a new run, never
+// silent over-spend).
 async function takeProviderCallSlot() {
   const env = getEnv();
   const connection = getConnection();
+  await require("./geminiBudget").takeSharedCallSlot(connection);
   const key = dayKey(Date.now());
   const count = await connection.incr(key);
   if (count === 1) {

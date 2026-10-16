@@ -83,8 +83,54 @@ function sleep(ms) {
   });
 }
 
+function abortError() {
+  const err = new Error("Aborted.");
+  err.code = "CANCELLED";
+  return err;
+}
+
+// Abort-aware sleep for the mock twin: a runner step-timeout aborts
+// the wait instead of leaking a hung promise past the test.
+function abortableSleep(ms, signal) {
+  if (!signal || typeof signal.aborted !== "boolean") {
+    return sleep(ms);
+  }
+  if (signal.aborted) {
+    return Promise.reject(abortError());
+  }
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, ms);
+    if (typeof timer.unref === "function") {
+      timer.unref();
+    }
+    function onAbort() {
+      clearTimeout(timer);
+      reject(abortError());
+    }
+    function cleanup() {
+      try {
+        signal.removeEventListener("abort", onAbort);
+      } catch (_unused) {
+        // Listener removal is best-effort.
+      }
+    }
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
 function classifyLiveError(err) {
   const message = String((err && err.message) || "");
+  // Our own step-timeout abort surfaces as an AbortError from the SDK
+  // layer: the call outcome is unknown (may still bill server-side),
+  // so it stays PROVIDER_TIMEOUT — bounded-retryable, never silent.
+  if ((err && err.name === "AbortError") || /AbortError/i.test(message)) {
+    const out = new Error("Gemini call timed out.");
+    out.code = "PROVIDER_TIMEOUT";
+    return out;
+  }
   const status =
     (err && (err.status || err.statusCode || err.code)) || null;
   const numeric = Number(status);
@@ -157,12 +203,10 @@ async function uploadAudioForTranscription({ bytes, mimeType, displayName, signa
   const mode = getEnv().transcriptionProvider;
   if (mode === "mock") {
     if (mockBehavior.latencyMs > 0) {
-      await sleep(mockBehavior.latencyMs);
+      await abortableSleep(mockBehavior.latencyMs, signal);
     }
     if (signal && signal.aborted) {
-      const err = new Error("Aborted.");
-      err.code = "CANCELLED";
-      throw err;
+      throw abortError();
     }
     if (mockBehavior.failUpload) {
       const code = mockBehavior.failUpload;
@@ -189,7 +233,13 @@ async function uploadAudioForTranscription({ bytes, mimeType, displayName, signa
     }
     const uploaded = await ai.files.upload({
       file: localPath,
-      config: { mimeType, displayName: displayName || "meeting-audio" },
+      config: {
+        mimeType,
+        displayName: displayName || "meeting-audio",
+        // Frees our wait on step-timeout; documented client-only
+        // (server may still bill) — same boundary as generateContent.
+        ...(signal ? { abortSignal: signal } : {}),
+      },
     });
     const fileName = uploaded && uploaded.name;
     if (!fileName) {
@@ -249,15 +299,13 @@ async function transcribeChunkAudio({ fileRef, prompt, responseSchema, signal, o
   const mode = getEnv().transcriptionProvider;
   if (mode === "mock") {
     if (mockBehavior.latencyMs > 0) {
-      await sleep(mockBehavior.latencyMs);
+      await abortableSleep(mockBehavior.latencyMs, signal);
     }
     if (signal && signal.aborted) {
-      const err = new Error("Aborted.");
-      err.code = "CANCELLED";
-      throw err;
+      throw abortError();
     }
     if (mockBehavior.hangGenerate) {
-      await new Promise(() => {});
+      await abortableSleep(3600000, signal);
     }
     if (mockBehavior.failGenerate) {
       const code = mockBehavior.failGenerate;
@@ -308,6 +356,9 @@ async function transcribeChunkAudio({ fileRef, prompt, responseSchema, signal, o
         responseSchema,
         temperature: 0,
         maxOutputTokens: 8192,
+        // Frees our wait on step-timeout; documented client-only
+        // (server may still bill).
+        ...(signal ? { abortSignal: signal } : {}),
       },
     });
     const finish =

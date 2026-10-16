@@ -4,7 +4,7 @@ const { Server } = require("socket.io");
 
 const { getEnv } = require("../config/env");
 const logger = require("../config/logger");
-const { verifyHs256Jwt } = require("../middleware/requireAuth");
+const { verifyAccessToken } = require("../services/tokenService");
 const { roomNameFor } = require("../services/meetingJoinService");
 const { authorizeMeetingAccess } = require("../services/meetingAccessService");
 const { sendMessage, getHistory } = require("../services/chatService");
@@ -30,6 +30,13 @@ const { resolveChatLimits } = require("../constants/chatLimits");
 //     clientMessageId, text, createdAt } to the meeting room, and
 //     meeting:revoked { meetingId, reason } when the lifecycle owner
 //     revokes access through revokeMeetingAccess().
+//   reaction:send { meetingId, emoji }
+//     -> { ok: true, reaction } | { ok: false, code, message }
+//     server emits reaction:new { meetingId, userId, emoji, at } to room.
+//   hand:raise    { meetingId, raised }
+//     -> { ok: true, hand } | { ok: false, code, message }
+//     server emits hand:updated { meetingId, userId, raised, at } to room.
+//   Ephemeral only: never persisted, never delivered outside the room.
 //   Phase 3 adds server emits to the meeting room only (authorized
 //   members): meeting:ended { meetingId, endedAt },
 //   recording:status { meetingId, recording }, and recording:ready
@@ -52,18 +59,30 @@ function handshakeError(code, message) {
 }
 
 function resolveToken(socket) {
-  const auth = socket.handshake && socket.handshake.auth;
-  if (auth && typeof auth.token === "string" && auth.token.length > 0) {
-    return auth.token;
-  }
-  const headers = socket.handshake && socket.handshake.headers;
-  const header =
-    headers && (headers.authorization || headers.Authorization);
-  if (typeof header === "string" && header.startsWith("Bearer ")) {
-    const token = header.slice("Bearer ".length).trim();
-    if (token) {
-      return token;
+  // Cookie-only transport (P0 boundary): the access JWT is accepted
+  // exclusively from the HttpOnly im_at cookie on the handshake.
+  // Handshake auth tokens, Authorization headers and query strings are
+  // never credential paths. Parsed manually (no new dependency); never
+  // logged.
+  try {
+    const headers = socket.handshake && socket.handshake.headers;
+    const cookieHeader = headers && headers.cookie;
+    if (typeof cookieHeader === "string") {
+      for (const part of cookieHeader.split(";")) {
+        const idx = part.indexOf("=");
+        if (idx <= 0) {
+          continue;
+        }
+        if (part.slice(0, idx).trim() === "im_at") {
+          const value = part.slice(idx + 1).trim();
+          if (value) {
+            return value;
+          }
+        }
+      }
     }
+  } catch (_unused) {
+    // fall through to null
   }
   return null;
 }
@@ -82,6 +101,30 @@ function authExpired(socket) {
   return Math.floor(Date.now() / 1000) >= exp;
 }
 
+// Current-version gate for sensitive events: one projected indexed
+// User read (status + authVersion). Returns true when the socket must
+// be treated as unauthorized (caller acks + disconnects). Fail closed
+// on DB error. No version caching beyond the handshake snapshot.
+async function socketVersionRevoked(socket) {
+  const userId = socket.data && socket.data.userId;
+  if (typeof userId !== "string" || userId.length === 0) {
+    return true;
+  }
+  try {
+    const User = require("../models/User");
+    const user = await User.findById(userId, {
+      status: 1,
+      authVersion: 1,
+    }).lean();
+    if (!user || user.status !== "active") {
+      return true;
+    }
+    return (user.authVersion || 0) !== (socket.data.authVer || 0);
+  } catch (_unused) {
+    return true;
+  }
+}
+
 function attachMeetingSockets(httpServer) {
   const env = getEnv();
   const limits = resolveChatLimits();
@@ -90,15 +133,27 @@ function attachMeetingSockets(httpServer) {
   const packetMax = limits.PACKET_MAX_BYTES;
 
   const io = new Server(httpServer, {
-    // Credentials travel in handshake auth, never in the URL: nothing
-    // secret lands in query strings, URLs, or logs.
-    cors: env.clientUrl ? { origin: env.clientUrl } : undefined,
+    // Credentials travel in handshake cookies, never in the URL: nothing
+    // secret lands in query strings, URLs, or logs. Exact frontend
+    // origin plus credentials so browsers (withCredentials) send the
+    // HttpOnly auth cookie on the handshake.
+    cors: env.clientUrl
+      ? { origin: env.clientUrl, credentials: true }
+      : undefined,
     maxHttpBufferSize: packetMax,
   });
 
-  // Handshake authentication with the team's real JWT verification.
-  // A LiveKit room token is NOT accepted here: Socket.IO app auth is the
-  // session/user JWT only.
+  // Handshake authentication with the stateless cookie-JWT policy.
+  // A LiveKit room token is NEVER accepted here: Socket.IO app auth is
+  // the app access JWT only (purpose=access, issuer/audience/algorithm
+  // enforced), read from the HttpOnly cookie or handshake auth/Bearer.
+  // The handshake additionally reads the current User row (active
+  // status + authVersion match) — no client role/user claims. Old
+  // session/opaque tokens are rejected: cutover needs a fresh login.
+  // Handshake alone never authorizes future events: per-event expiry +
+  // version + membership gates re-check below, and revokeUserSockets()
+  // evicts live sockets on password change / logout-all (same process;
+  // cross-replica converges on next handshake/validation).
   io.use((socket, next) => {
     if (io.engine.clientsCount > maxSockets) {
       next(handshakeError("OVERLOADED", "The server is at capacity."));
@@ -116,22 +171,48 @@ function attachMeetingSockets(httpServer) {
     }
     let payload;
     try {
-      payload = verifyHs256Jwt(token, secret);
+      payload = verifyAccessToken(token);
     } catch (_unused) {
       next(handshakeError("UNAUTHORIZED", "Invalid or expired token."));
       return;
     }
-    const userId = payload.sub || payload.userId || payload.id;
+    const userId = payload.sub;
     if (typeof userId !== "string" || userId.length === 0) {
       next(handshakeError("UNAUTHORIZED", "Invalid or expired token."));
       return;
     }
-    socket.data.userId = userId;
-    socket.data.authExp =
-      typeof payload.exp === "number" ? payload.exp : null;
-    socket.data.rooms = new Set();
-    socket.data.inflight = 0;
-    next();
+    // Current-User check at handshake. Fail closed on DB error.
+    let User;
+    try {
+      User = require("../models/User");
+    } catch (_unused) {
+      next(handshakeError("INTERNAL_ERROR", "Authentication is not configured."));
+      return;
+    }
+    User.findById(userId, { status: 1, authVersion: 1 })
+      .lean()
+      .then((user) => {
+        if (!user || user.status !== "active") {
+          next(handshakeError("UNAUTHORIZED", "Invalid or expired token."));
+          return;
+        }
+        if ((user.authVersion || 0) !== (payload.ver || 0)) {
+          next(handshakeError("UNAUTHORIZED", "Credentials have been invalidated."));
+          return;
+        }
+        socket.data.userId = userId;
+        socket.data.authVer = user.authVersion || 0;
+        socket.data.authJti =
+          typeof payload.jti === "string" ? payload.jti : null;
+        socket.data.authExp =
+          typeof payload.exp === "number" ? payload.exp : null;
+        socket.data.rooms = new Set();
+        socket.data.inflight = 0;
+        next();
+      })
+      .catch(() => {
+        next(handshakeError("INTERNAL_ERROR", "Authentication temporarily unavailable."));
+      });
   });
 
   io.on("connection", (socket) => {
@@ -159,6 +240,14 @@ function attachMeetingSockets(httpServer) {
       if (authExpired(socket)) {
         chatMetrics.observeReject("UNAUTHORIZED");
         ackError(ack, "UNAUTHORIZED", "Authentication has expired.");
+        socket.disconnect(true);
+        return;
+      }
+      // Current-version gate: a password change / logout-all since the
+      // handshake denies new subscriptions even before access expiry.
+      if (await socketVersionRevoked(socket)) {
+        chatMetrics.observeReject("UNAUTHORIZED");
+        ackError(ack, "UNAUTHORIZED", "Credentials have been invalidated.");
         socket.disconnect(true);
         return;
       }
@@ -273,6 +362,14 @@ function attachMeetingSockets(httpServer) {
         socket.disconnect(true);
         return;
       }
+      // Current-version gate before durable work: invalidated
+      // credentials cannot persist or broadcast.
+      if (await socketVersionRevoked(socket)) {
+        chatMetrics.observeReject("UNAUTHORIZED");
+        ackError(ack, "UNAUTHORIZED", "Credentials have been invalidated.");
+        socket.disconnect(true);
+        return;
+      }
       if (socket.data.inflight >= limits.MAX_INFLIGHT_SENDS) {
         // Backpressure: durable sends are never dropped — the client
         // retries with the same id. Only ephemeral overflow is refused.
@@ -315,6 +412,84 @@ function attachMeetingSockets(httpServer) {
         ackError(ack, code, err && err.message ? err.message : "Could not send.");
       } finally {
         socket.data.inflight -= 1;
+      }
+    });
+
+    socket.on("reaction:send", async (payload, ack) => {
+      const body = payload && typeof payload === "object" ? payload : {};
+      try {
+        validateMeetingIdParam(body.meetingId);
+      } catch (err) {
+        ackError(ack, err.code || "VALIDATION_ERROR", "Invalid meeting id.");
+        return;
+      }
+      if (typeof body.emoji !== "string" || body.emoji.length === 0 || body.emoji.length > 16) {
+        ackError(ack, "VALIDATION_ERROR", "Invalid emoji.");
+        return;
+      }
+      if (authExpired(socket)) {
+        ackError(ack, "UNAUTHORIZED", "Authentication has expired.");
+        socket.disconnect(true);
+        return;
+      }
+      if (await socketVersionRevoked(socket)) {
+        ackError(ack, "UNAUTHORIZED", "Credentials have been invalidated.");
+        socket.disconnect(true);
+        return;
+      }
+      if (!takeSendBudget(socket.data.userId)) {
+        ackError(ack, "RATE_LIMITED", "Slow down and retry.");
+        return;
+      }
+      try {
+        await authorizeMeetingAccess({ meetingIdParam: body.meetingId, userId: socket.data.userId });
+      } catch (err) {
+        ackError(ack, err.code || "INTERNAL_ERROR", err.message || "Could not react.");
+        return;
+      }
+      const reaction = { meetingId: body.meetingId, userId: socket.data.userId, emoji: body.emoji, at: new Date().toISOString() };
+      io.to(roomNameFor(body.meetingId)).emit("reaction:new", reaction);
+      if (typeof ack === "function") {
+        ack({ ok: true, reaction });
+      }
+    });
+
+    socket.on("hand:raise", async (payload, ack) => {
+      const body = payload && typeof payload === "object" ? payload : {};
+      try {
+        validateMeetingIdParam(body.meetingId);
+      } catch (err) {
+        ackError(ack, err.code || "VALIDATION_ERROR", "Invalid meeting id.");
+        return;
+      }
+      if (typeof body.raised !== "boolean") {
+        ackError(ack, "VALIDATION_ERROR", "Invalid raised flag.");
+        return;
+      }
+      if (authExpired(socket)) {
+        ackError(ack, "UNAUTHORIZED", "Authentication has expired.");
+        socket.disconnect(true);
+        return;
+      }
+      if (await socketVersionRevoked(socket)) {
+        ackError(ack, "UNAUTHORIZED", "Credentials have been invalidated.");
+        socket.disconnect(true);
+        return;
+      }
+      if (!takeSendBudget(socket.data.userId)) {
+        ackError(ack, "RATE_LIMITED", "Slow down and retry.");
+        return;
+      }
+      try {
+        await authorizeMeetingAccess({ meetingIdParam: body.meetingId, userId: socket.data.userId });
+      } catch (err) {
+        ackError(ack, err.code || "INTERNAL_ERROR", err.message || "Could not raise hand.");
+        return;
+      }
+      const hand = { meetingId: body.meetingId, userId: socket.data.userId, raised: body.raised, at: new Date().toISOString() };
+      io.to(roomNameFor(body.meetingId)).emit("hand:updated", hand);
+      if (typeof ack === "function") {
+        ack({ ok: true, hand });
       }
     });
   });
@@ -418,7 +593,84 @@ function attachMeetingSockets(httpServer) {
   });
   setRoomCloser((meetingIdParam) => closeMeetingRoomById(meetingIdParam));
 
-  return { io, close, revokeMeetingAccess, closeMeetingRoomById };
+  // User-wide version eviction for the auth owner (password change,
+  // logout-all). Removes ALL of the user's sockets on THIS process and
+  // disconnects them: version invalidation is account-wide by design
+  // (one User.authVersion, no per-login registry), so ordinary logout
+  // never calls this. Emits auth:revoked before disconnect so clients
+  // route to login. HONEST BOUNDARY: copied still-valid JWTs may
+  // reconnect until expiry/version check; other replicas converge on
+  // next handshake/validation (Redis adapter prerequisite, not claimed
+  // here). Passive subscriptions never persist beyond access expiry:
+  // expiry gates on every sensitive event force re-auth/reconnect.
+  function revokeUserSockets({ userId }) {
+    let removed = 0;
+    for (const [, s] of io.sockets.sockets) {
+      if (!s.data || s.data.userId !== String(userId)) {
+        continue;
+      }
+      removed += 1;
+      try {
+        for (const room of Array.from(s.rooms)) {
+          if (room !== s.id) {
+            s.leave(room);
+          }
+        }
+      } catch (_unused) {
+        // Leave failures must not block remaining evictions.
+      }
+      if (s.data.rooms) {
+        s.data.rooms.clear();
+      }
+      try {
+        s.emit("auth:revoked", { reason: "CREDENTIALS_INVALIDATED" });
+      } catch (_unused) {
+        // Emit failures must not block disconnect.
+      }
+      try {
+        s.disconnect(true);
+      } catch (_unused) {
+        // Disconnect failures are terminal anyway.
+      }
+    }
+    if (removed > 0) {
+      logger.info("auth_user_sockets_revoked", { removed });
+    }
+    return removed;
+  }
+
+  // Register the instance evictor so the auth owner (which cannot hold
+  // the io instance without an import cycle) reaches THIS server's
+  // sockets through the module-level revokeUserSockets() below.
+  setUserEvictor(revokeUserSockets);
+
+  return { io, close, revokeMeetingAccess, closeMeetingRoomById, revokeUserSockets };
 }
 
-module.exports = { attachMeetingSockets };
+// Module-level user evictor registry (mirrors realtime.js: the auth
+// controller requires this module but never holds the io instance).
+// attachMeetingSockets registers the live implementation; without
+// attachment this is a safe no-op returning 0 so HTTP-only tests and
+// workers never crash.
+let userEvictor = null;
+
+function setUserEvictor(fn) {
+  userEvictor = typeof fn === "function" ? fn : null;
+}
+
+function revokeUserSockets(filter) {
+  if (!userEvictor) {
+    return 0;
+  }
+  try {
+    return userEvictor(filter || {}) || 0;
+  } catch (_unused) {
+    return 0;
+  }
+}
+
+function resetUserEvictorForTests() {
+  userEvictor = null;
+}
+
+module.exports = { attachMeetingSockets, revokeUserSockets, resetUserEvictorForTests };

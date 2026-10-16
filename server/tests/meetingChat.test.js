@@ -34,6 +34,7 @@ const { attachMeetingSockets } = require("../src/sockets/meetingSockets");
 const Meeting = require("../src/models/Meeting");
 const MeetingParticipant = require("../src/models/MeetingParticipant");
 const ChatMessage = require("../src/models/ChatMessage");
+const User = require("../src/models/User");
 const sendBudget = require("../src/sockets/sendBudget");
 const chatMetrics = require("../src/utils/chatMetrics");
 
@@ -47,6 +48,11 @@ function signAuthToken(sub, overrides) {
   );
   const payload = {
     sub,
+    purpose: "access",
+    iss: "intellmeet",
+    aud: "intellmeet-app",
+    ver: 0,
+    jti: crypto.randomUUID(),
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 3600,
     ...(overrides || {}),
@@ -62,7 +68,7 @@ function signAuthToken(sub, overrides) {
 function connectClient(token, opts) {
   return new Promise((resolve, reject) => {
     const socket = Client(baseUrl, {
-      auth: token ? { token } : {},
+      extraHeaders: token ? { cookie: `im_at=${token}` } : {},
       transports: ["websocket"],
       ...(opts || {}),
     });
@@ -84,6 +90,26 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Stateless auth reads the current User row: every minted test token
+// needs a matching active/version-0 User, seeded wherever ids are made.
+async function ensureUsers(ids) {
+  for (const id of ids) {
+    await User.updateOne(
+      { _id: id },
+      {
+        $setOnInsert: {
+          name: "test user",
+          email: `test-${String(id)}@example.com`,
+          role: "user",
+          status: "active",
+          authVersion: 0,
+        },
+      },
+      { upsert: true }
+    );
+  }
+}
+
 async function makeMeeting({ status, members } = {}) {
   const hostId = new mongoose.Types.ObjectId();
   const meeting = await Meeting.create({
@@ -91,10 +117,12 @@ async function makeMeeting({ status, members } = {}) {
     hostId,
     status: status || "live",
   });
+  await ensureUsers([hostId]);
   const users = {};
   for (const name of members || []) {
     const userId = new mongoose.Types.ObjectId();
     users[name] = { id: userId, token: signAuthToken(userId.toString()) };
+    await ensureUsers([userId]);
     await MeetingParticipant.create({
       meetingId: meeting._id,
       userId,
@@ -104,9 +132,28 @@ async function makeMeeting({ status, members } = {}) {
   return { meeting, hostId, users };
 }
 
+// Cookie-only test credentials: the hand-minted access JWT travels as
+// the im_at cookie, with the login-context-bound double-submit CSRF
+// value (computed from the token's jti, as the server does).
+function csrfFor(token) {
+  const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
+  return crypto
+    .createHmac("sha256", process.env.JWT_SECRET)
+    .update(`csrf:${payload.jti || "anonymous"}`)
+    .digest("base64url");
+}
+
+function authHeaders(token) {
+  if (!token) {
+    return {};
+  }
+  const csrf = csrfFor(token);
+  return { cookie: `im_at=${token}; im_csrf=${csrf}`, "x-csrf-token": csrf };
+}
+
 function historyFetch(meetingId, token, query) {
   return fetch(`${baseUrl}/api/meetings/${meetingId}/messages${query || ""}`, {
-    headers: token ? { authorization: `Bearer ${token}` } : {},
+    headers: { ...authHeaders(token) },
   });
 }
 
@@ -119,6 +166,7 @@ describe("phase 2 meeting chat", () => {
     await Meeting.syncIndexes();
     await MeetingParticipant.syncIndexes();
     await ChatMessage.syncIndexes();
+    await User.syncIndexes();
     httpServer = http.createServer(app);
     sockets = attachMeetingSockets(httpServer);
     await new Promise((resolve) => httpServer.listen(0, "127.0.0.1", resolve));
@@ -149,6 +197,7 @@ describe("phase 2 meeting chat", () => {
     await ChatMessage.deleteMany({});
     await MeetingParticipant.deleteMany({});
     await Meeting.deleteMany({});
+    await User.deleteMany({});
   });
 
   it("two authorized users communicate through the room", async () => {
@@ -180,10 +229,11 @@ describe("phase 2 meeting chat", () => {
     }
   });
 
-  it("outsiders cannot join, send, or read", async () => {
+  it("outsiders cannot join, send, react, raise, or read", async () => {
     const { meeting, users } = await makeMeeting({ members: ["a"] });
     const id = meeting._id.toString();
     const outsiderId = new mongoose.Types.ObjectId();
+    await ensureUsers([outsiderId]);
     const outsiderToken = signAuthToken(outsiderId.toString());
     const o = await connectClient(outsiderToken);
     try {
@@ -197,6 +247,12 @@ describe("phase 2 meeting chat", () => {
       });
       assert.equal(send.ok, false);
       assert.equal(send.code, "NOT_A_MEMBER");
+      const react = await emitAck(o, "reaction:send", { meetingId: id, emoji: "👍" });
+      assert.equal(react.ok, false);
+      assert.equal(react.code, "NOT_A_MEMBER");
+      const hand = await emitAck(o, "hand:raise", { meetingId: id, raised: true });
+      assert.equal(hand.ok, false);
+      assert.equal(hand.code, "NOT_A_MEMBER");
       const res = await historyFetch(id, outsiderToken);
       assert.equal(res.status, 403);
       const self = await connectClient(users.a.token);
@@ -220,6 +276,37 @@ describe("phase 2 meeting chat", () => {
       assert.equal(await ChatMessage.countDocuments({ meetingId: meeting._id }), 1);
     } finally {
       o.close();
+    }
+  });
+
+  it("reactions and hand raises broadcast room-only with validation", async () => {
+    const { meeting, users } = await makeMeeting({ members: ["a", "b"] });
+    const id = meeting._id.toString();
+    const a = await connectClient(users.a.token);
+    const b = await connectClient(users.b.token);
+    try {
+      assert.equal((await emitAck(a, "meeting:join", { meetingId: id })).ok, true);
+      assert.equal((await emitAck(b, "meeting:join", { meetingId: id })).ok, true);
+      const gotReaction = new Promise((resolve) => b.once("reaction:new", resolve));
+      const rack = await emitAck(a, "reaction:send", { meetingId: id, emoji: "👍" });
+      assert.equal(rack.ok, true);
+      assert.equal(rack.reaction.emoji, "👍");
+      const liveReaction = await gotReaction;
+      assert.equal(liveReaction.emoji, "👍");
+      assert.equal(liveReaction.userId, users.a.id.toString());
+      const gotHand = new Promise((resolve) => b.once("hand:updated", resolve));
+      const hack = await emitAck(a, "hand:raise", { meetingId: id, raised: true });
+      assert.equal(hack.ok, true);
+      const liveHand = await gotHand;
+      assert.equal(liveHand.raised, true);
+      // Validation: bad emoji / non-boolean raised rejected, nothing broadcast.
+      assert.equal((await emitAck(a, "reaction:send", { meetingId: id, emoji: "" })).ok, false);
+      assert.equal((await emitAck(a, "hand:raise", { meetingId: id, raised: "yes" })).ok, false);
+      // Ephemeral only: nothing persisted.
+      assert.equal(await ChatMessage.countDocuments({ meetingId: meeting._id }), 0);
+    } finally {
+      a.close();
+      b.close();
     }
   });
 

@@ -41,6 +41,10 @@ router.get("/meeting-lab", requireAuth, (req, res) => {
         "third-party transfer; that is a separate decision.",
     },
     routes: {
+      create: "POST /api/meetings { title } (link-admission mode; returns meetingId + joinUrl)",
+      admit: "POST /api/meetings/:id/members { userId } (host)",
+      resolveLink: "GET /api/meeting-links/:code (auth; safe metadata only, never admits)",
+      joinLink: "POST /api/meeting-links/:code/join (auth + CSRF; explicit Join admits ordinary participant + shared join token)",
       consent: "POST /api/meetings/:id/recording-consent { decision, noticeVersion, aiTransfer? }",
       consentStatus: "GET /api/meetings/:id/recording-consent",
       start: "POST /api/meetings/:id/recordings/start (host)",
@@ -52,6 +56,14 @@ router.get("/meeting-lab", requireAuth, (req, res) => {
       transcriptionStatus: "GET /api/meetings/:id/recordings/:recordingId/transcription",
       transcript: "GET /api/meetings/:id/recordings/:recordingId/transcript?cursor=&limit= (&partial=true labels staged output)",
       cancelTranscription: "DELETE /api/meetings/:id/recordings/:recordingId/transcription (host)",
+      intelligence: "POST /api/meetings/:id/recordings/:recordingId/intelligence (host; ended + ready + complete transcript + transfer consent)",
+      intelligenceStatus: "GET /api/meetings/:id/recordings/:recordingId/intelligence",
+      cancelIntelligence: "DELETE /api/meetings/:id/recordings/:recordingId/intelligence (host)",
+      actionItems: "GET /api/meetings/:id/recordings/:recordingId/action-items?cursor=&limit=&state= (member; latest run version)",
+      reviewActionItem: "PATCH /api/meetings/:id/action-items/:itemId { action: approve|edit|reject, version, title?, detail?, dueDateText?, ownerUserId?|confirmUnassigned } (host)",
+      createTask: "POST /api/meetings/:id/action-items/:itemId/task (host; approved only; idempotent on taskIdempotencyKey; 201 first, 200 resume)",
+      history: "GET /api/meetings?cursor=&limit= (member; entitled hosted/admitted summaries, newest-first)",
+      detail: "GET /api/meetings/:id (member; summary + recording/transcription/intelligence status pointers, no blobs)",
     },
     transcriptionNotice: {
       text:
@@ -61,7 +73,24 @@ router.get("/meeting-lab", requireAuth, (req, res) => {
         "insufficient. Withdrawal blocks publication; bytes already sent " +
         "cannot be unsent, but late results are suppressed.",
     },
-    events: ["meeting:ended", "recording:status", "recording:ready", "transcription:status", "transcription:ready"],
+    twoUserFlow: {
+      text:
+        "Two-session verification with real team auth (no bypass): session A " +
+        "(host) and session B (admitted member) drive join→chat→consent→" +
+        "record→end→transcript→intelligence→review; session C (outsider) " +
+        "must see 403/404 on every read and write. Media attachment needs " +
+        "a live LiveKit room (token issuance alone is not proof); Egress " +
+        "and Gemini live paths run only in authorized budgets and are " +
+        "otherwise simulated (mock) and labeled as such.",
+    },
+    intelligenceNotice: {
+      text:
+        "Intelligence sends transcript TEXT (bounded windows with segment ids, never audio/credentials) to Google Gemini only after the " +
+        "meeting ends AND a complete published transcript exists AND every captured human approves transfer " +
+        "(aiTransfer) for the current notice. Suggestions are proposals: the reviewer explicitly chooses a verified " +
+        "owner and confirms details before anything becomes a task; approved suggestions materialize exactly one task (idempotent).",
+    },
+    events: ["meeting:ended", "recording:status", "recording:ready", "transcription:status", "transcription:ready", "intelligence:status", "intelligence:ready", "action-item:updated"],
     states: RECORDING_STATES,
     transitions: RECORDING_TRANSITIONS,
     integration: {
@@ -69,6 +98,7 @@ router.get("/meeting-lab", requireAuth, (req, res) => {
       recordingStorageConfigured: summary.recordingStorageConfigured,
       livekitConfigured: summary.livekitConfigured,
       transcriptionProvider: summary.transcriptionProvider,
+      intelligenceProvider: summary.intelligenceProvider,
       geminiConfigured: summary.geminiConfigured,
       redisConfigured: summary.redisConfigured,
     },

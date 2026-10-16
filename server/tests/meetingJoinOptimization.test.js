@@ -32,6 +32,7 @@ resetEnvCache();
 const app = require("../src/app");
 const Meeting = require("../src/models/Meeting");
 const MeetingParticipant = require("../src/models/MeetingParticipant");
+const User = require("../src/models/User");
 const joinRateLimit = require("../src/middleware/joinRateLimit");
 const metrics = require("../src/utils/joinMetrics");
 
@@ -44,6 +45,11 @@ function signAuthToken(sub) {
   );
   const payload = {
     sub,
+    purpose: "access",
+    iss: "intellmeet",
+    aud: "intellmeet-app",
+    ver: 0,
+    jti: crypto.randomUUID(),
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 3600,
   };
@@ -75,12 +81,32 @@ function queryLike(doc) {
 
 let originalFindById;
 let originalFindOne;
+let originalUserFindById;
+
+// Cookie-only test credentials: the hand-minted access JWT travels as
+// the im_at cookie, with the login-context-bound double-submit CSRF
+// value (computed from the token's jti, as the server does).
+function csrfFor(token) {
+  const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
+  return crypto
+    .createHmac("sha256", process.env.JWT_SECRET)
+    .update(`csrf:${payload.jti || "anonymous"}`)
+    .digest("base64url");
+}
+
+function authHeaders(token) {
+  if (!token) {
+    return {};
+  }
+  const csrf = csrfFor(token);
+  return { cookie: `im_at=${token}; im_csrf=${csrf}`, "x-csrf-token": csrf };
+}
 
 function postJoin(meetingId, token) {
   return fetch(`${baseUrl}/api/meetings/${meetingId}/join`, {
     method: "POST",
     headers: {
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
+      ...authHeaders(token),
       "content-type": "application/json",
     },
     body: JSON.stringify({}),
@@ -91,6 +117,7 @@ describe("meeting join optimization", () => {
   before(async () => {
     originalFindById = Meeting.findById;
     originalFindOne = MeetingParticipant.findOne;
+    originalUserFindById = User.findById;
     await new Promise((resolve) => {
       server = app.listen(0, "127.0.0.1", resolve);
     });
@@ -101,6 +128,7 @@ describe("meeting join optimization", () => {
   after(async () => {
     Meeting.findById = originalFindById;
     MeetingParticipant.findOne = originalFindOne;
+    User.findById = originalUserFindById;
     await new Promise((resolve, reject) => {
       server.close((err) => (err ? reject(err) : resolve()));
     });
@@ -117,11 +145,16 @@ describe("meeting join optimization", () => {
     delete process.env.JOIN_RATE_LIMIT_WINDOW_MS;
     joinRateLimit.resetForTests();
     metrics.reset();
+    // Stateless auth reads the current User row: stub active/version-0
+    // (matches test tokens) to stay hermetic. Re-applied every test.
+    User.findById = () =>
+      queryLike({ status: "active", role: "user", authVersion: 0 });
   });
 
   afterEach(() => {
     Meeting.findById = originalFindById;
     MeetingParticipant.findOne = originalFindOne;
+    User.findById = originalUserFindById;
     delete process.env.JOIN_RATE_LIMIT_MAX;
     delete process.env.JOIN_RATE_LIMIT_WINDOW_MS;
     process.env.RECORDING_PROVIDER = "disabled";
