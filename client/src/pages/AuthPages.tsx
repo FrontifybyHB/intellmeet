@@ -1,7 +1,14 @@
 import { useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 
-export function LoginPage({ onSwitch }: { onSwitch: (view: string) => void }) {
+export function LoginPage({
+  onSwitch,
+  onSuccess,
+}: {
+  onSwitch: (view: string) => void;
+  /** Called after a successful sign-in; lets a route redirect the user. */
+  onSuccess?: () => void;
+}) {
   const { login, error } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -14,6 +21,7 @@ export function LoginPage({ onSwitch }: { onSwitch: (view: string) => void }) {
     setLocalError(null);
     try {
       await login(email, password);
+      onSuccess?.();
     } catch {
       setLocalError("Invalid email or password.");
     } finally {

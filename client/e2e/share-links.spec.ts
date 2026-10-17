@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
 
 // Share-link two-user flow (contract level, no media proof).
-// Prerequisites (not started by this spec): API on :3000 and client on
-// :5173 with VITE_API_URL pointing at the API. A join/token success
-// here never proves live LiveKit media works.
+// Prerequisites (not started by this spec): the API on :5000 (server
+// default) and the client on :5173. The client dev server proxies /api and
+// /socket.io to the API, so no VITE_API_URL override is required. A join
+// success here never proves live LiveKit media works.
 
 test("title-only create → copy URL → logged-out invitee → register/login → Join", async ({
   page,
@@ -53,7 +54,8 @@ test("title-only create → copy URL → logged-out invitee → register/login �
   // After sign-in the invite returns to the exact meeting.
   await expect(invite.getByRole("button", { name: /join meeting/i })).toBeVisible({ timeout: 15000 });
   await invite.getByRole("button", { name: /join meeting/i }).click();
-  // Joined invitee lands in the meeting lab with the meeting preset.
-  await expect(invite.getByTestId("meeting-id")).toHaveValue(/.+/, { timeout: 15000 });
+  // Joined invitee lands on the meeting detail route for that meeting
+  // (previously the dev-only Meeting Lab screen).
+  await expect(invite.getByTestId("meeting-id")).toHaveText(/.+/, { timeout: 15000 });
   await guest.close();
 });
