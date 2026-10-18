@@ -1,12 +1,8 @@
 import { useRef, useState } from "react";
 import { Room } from "livekit-client";
 import { io, type Socket } from "socket.io-client";
+import { API_ORIGIN } from "@/config/env";
 import { ApiError, apiFetch } from "../services/api";
-
-const SOCKET_BASE = (
-  (import.meta.env.VITE_API_URL as string | undefined) ||
-  "http://localhost:3000/api"
-).replace(/\/api$/, "");
 
 function show(v: unknown): string {
   try {
@@ -31,7 +27,8 @@ function useOut() {
 }
 
 // Raw skeleton test bench for every backend API. No styling on
-// purpose. All calls go to localhost:3000 (VITE_API_URL override).
+// purpose. All calls go through the shared apiFetch/API_ORIGIN config
+// (VITE_API_URL override; same-origin proxy by default).
 export function ApiTestBench() {
   // shared ids
   const [meetingId, setMeetingId] = useState("");
@@ -101,7 +98,7 @@ export function ApiTestBench() {
 
   return (
     <main>
-      <h1>API Test Bench (raw, localhost:3000)</h1>
+      <h1>API Test Bench (raw)</h1>
       <div>
         <label>meetingId <input value={meetingId} onChange={(e) => setMeetingId(e.target.value)} size={30} /></label>
         <label> recordingId <input value={recordingId} onChange={(e) => setRecordingId(e.target.value)} size={30} /></label>
@@ -249,7 +246,7 @@ export function ApiTestBench() {
 
       <section>
         <h2>Dev lab</h2>
-        <button onClick={() => void labRun(() => fetch("http://localhost:3000/dev/meeting-lab", { credentials: "include" }).then((r) => r.json()))}>GET /dev/meeting-lab</button>
+        <button onClick={() => void labRun(() => fetch(`${API_ORIGIN}/dev/meeting-lab`, { credentials: "include" }).then((r) => r.json()))}>GET /dev/meeting-lab</button>
         <pre>{labOut}</pre>
       </section>
       <hr />
@@ -258,8 +255,11 @@ export function ApiTestBench() {
         <h2>Sockets (app events)</h2>
         <p>State: {sockState}</p>
         <div>
+          <label>
+            emoji <input value={emoji} onChange={(e) => setEmoji(e.target.value)} size={4} />
+          </label>
           <button onClick={() => {
-            const s = io(SOCKET_BASE, { withCredentials: true, transports: ["websocket"] });
+            const s = io(API_ORIGIN, { withCredentials: true, transports: ["websocket"] });
             sockRef.current = s;
             s.on("connect", () => { setSockState("connected"); slog("connected"); });
             s.on("disconnect", () => { setSockState("disconnected"); slog("disconnected"); });

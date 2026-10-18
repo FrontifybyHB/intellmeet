@@ -11,9 +11,7 @@
 //   explicitly (no silent replay of non-idempotent actions). Login and
 //   register never trigger a refresh. No retries on 403/503.
 
-const API_BASE =
-  (import.meta.env.VITE_API_URL as string | undefined) ||
-  "http://localhost:3000/api";
+import { API_BASE } from "@/config/env";
 
 export type ApiErrorCode = string;
 

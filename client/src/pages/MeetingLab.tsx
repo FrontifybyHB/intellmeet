@@ -1,12 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Room, RoomEvent, type RemoteParticipant } from "livekit-client";
 import { io, type Socket } from "socket.io-client";
+import { API_ORIGIN } from "@/config/env";
 import { ApiError, apiFetch } from "../services/api";
-
-const API_BASE =
-  (import.meta.env.VITE_API_URL as string | undefined) ||
-  "http://localhost:5000/api";
-const SOCKET_BASE = API_BASE.replace(/\/api$/, "");
 
 interface JoinResponse {
   roomName: string;
@@ -145,7 +141,7 @@ export function MeetingLab({ initialMeetingId }: { initialMeetingId?: string }) 
   }, [screenOn]);
 
   const connectSocket = useCallback(() => {
-    const s = io(SOCKET_BASE, { withCredentials: true, transports: ["websocket"] });
+    const s = io(API_ORIGIN, { withCredentials: true, transports: ["websocket"] });
     socketRef.current = s;
     s.on("connect", () => setSocketState("connected"));
     s.on("disconnect", () => setSocketState("disconnected"));
