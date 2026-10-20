@@ -28,7 +28,7 @@ test("title-only create → copy URL → logged-out invitee → register/login �
   await page.getByLabel(/password/i).fill(pw);
   await page.getByRole("button", { name: /^sign in$/i }).click();
   await expect(page.getByText(/welcome to intellmeet/i)).toBeVisible();
-  await page.getByRole("button", { name: /new meeting/i }).click();
+  await page.getByRole("link", { name: /new meeting/i }).click();
   await page.getByLabel(/title/i).fill(`share ${stamp}`);
   await page.getByRole("button", { name: /create/i }).click();
   const urlText = await page.getByTestId("join-url").textContent();

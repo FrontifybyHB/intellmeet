@@ -218,7 +218,7 @@ export function MeetingLab({ initialMeetingId }: { initialMeetingId?: string }) 
   );
 
   return (
-    <main>
+    <div className="space-y-4">
       <h2>Meeting Lab (contract test screen)</h2>
       <section>
         <label>
@@ -271,6 +271,6 @@ export function MeetingLab({ initialMeetingId }: { initialMeetingId?: string }) 
         <h3>Requests / errors</h3>
         <ul>{log.map((l, i) => <li key={i}>{l.method} {l.path} → {l.status} {l.message}</li>)}</ul>
       </section>
-    </main>
+    </div>
   );
 }

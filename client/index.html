@@ -3,8 +3,33 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#ffffff" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0b1120" media="(prefers-color-scheme: dark)" />
     <title>IntellMeet</title>
+    <!--
+      Applies the stored theme before first paint so there is no flash of the
+      wrong theme. Keep the storage key and values in sync with
+      src/components/theme/theme-context.ts (THEME_STORAGE_KEY).
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = window.localStorage.getItem("intellmeet-theme");
+          var prefersDark =
+            typeof window.matchMedia === "function" &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var dark = stored === "dark" || (stored !== "light" && prefersDark);
+          var root = document.documentElement;
+          if (dark) {
+            root.classList.add("dark");
+          }
+          root.style.colorScheme = dark ? "dark" : "light";
+        } catch (error) {
+          /* Storage or matchMedia blocked: fall back to the light theme. */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

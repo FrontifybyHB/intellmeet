@@ -1,7 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
-import { ApiError, apiFetch } from "../services/api";
-import { useAuth } from "../auth/AuthContext";
-import { LoginPage, RegisterPage } from "./AuthPages";
+import { Copy } from "lucide-react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
+
+import { useAuth } from "@/auth/AuthContext";
+import { ErrorState } from "@/components/common/ErrorState";
+import { LoadingState } from "@/components/common/LoadingState";
+import { PageHeader } from "@/components/common/PageHeader";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { LoginPage, RegisterPage } from "@/pages/AuthPages";
+import { ApiError, apiFetch } from "@/services/api";
 
 const CODE_RE = /^[A-Za-z0-9_-]{22}$/;
 
@@ -90,35 +99,100 @@ export function CreateMeeting({ onCreated }: { onCreated?: (meetingId: string) =
   };
 
   return (
-    <main>
-      <h2>New meeting</h2>
-      <form onSubmit={submit}>
-        <label>
-          Title
-          <input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={200} />
-        </label>
-        <button type="submit" disabled={busy}>
-          {busy ? "Creating…" : "Create & get link"}
-        </button>
-      </form>
-      {error && <p role="alert">{error}</p>}
+    <div className="mx-auto w-full max-w-2xl space-y-6">
+      <PageHeader
+        title="New meeting"
+        description="Create a meeting and share the invite link with participants."
+      />
+
+      <Card>
+        <CardContent className="pt-6">
+          <form onSubmit={submit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="meeting-title">Title</Label>
+              <Input
+                id="meeting-title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+                maxLength={200}
+                placeholder="Weekly design review"
+              />
+            </div>
+
+            {error && (
+              <p
+                role="alert"
+                className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+              >
+                {error}
+              </p>
+            )}
+
+            <Button type="submit" disabled={busy}>
+              {busy ? "Creating…" : "Create & get link"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+
       {result && (
-        <section>
-          <p>Share this link:</p>
-          <p data-testid="join-url">{result.joinUrl}</p>
-          <button type="button" onClick={() => void copy()}>
-            Copy link
-          </button>
-          {copied && <p>{copied}</p>}
-        </section>
+        <Card>
+          <CardHeader>
+            <h2 className="text-lg font-semibold tracking-tight">Share this link</h2>
+            <CardDescription>Anyone with the link can request to join.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p
+              className="rounded-lg border bg-muted/60 px-3 py-2 font-mono text-xs break-all"
+              data-testid="join-url"
+            >
+              {result.joinUrl}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => void copy()}>
+                <Copy aria-hidden="true" />
+                Copy link
+              </Button>
+              {copied && <span className="text-sm text-muted-foreground">{copied}</span>}
+            </div>
+          </CardContent>
+        </Card>
       )}
-    </main>
+    </div>
+  );
+}
+
+/** Shared frame for the invite landing states. */
+function InviteCard({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: ReactNode;
+  children?: ReactNode;
+}) {
+  return (
+    <Card className="w-full max-w-md">
+      <CardHeader className="space-y-1.5">
+        <h2 className="text-xl font-semibold tracking-tight text-balance">{title}</h2>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      {children ? <CardContent className="space-y-3">{children}</CardContent> : null}
+    </Card>
   );
 }
 
 // Invite landing: resolve → explicit Join. Logged-out users sign in
 // first with only the validated same-app path preserved.
-export function JoinView({ code, onJoined }: { code: string; onJoined: (meetingId: string) => void }) {
+export function JoinView({
+  code,
+  onJoined,
+}: {
+  code: string;
+  onJoined: (meetingId: string) => void;
+}) {
   const { user } = useAuth();
   const [info, setInfo] = useState<ResolveInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -136,7 +210,9 @@ export function JoinView({ code, onJoined }: { code: string; onJoined: (meetingI
       if (err instanceof ApiError && err.status === 401) {
         setMode("login");
       } else {
-        setError(err instanceof ApiError ? `${err.code}: ${err.message}` : "Could not load invite.");
+        setError(
+          err instanceof ApiError ? `${err.code}: ${err.message}` : "Could not load invite.",
+        );
       }
     } finally {
       setLoading(false);
@@ -173,81 +249,117 @@ export function JoinView({ code, onJoined }: { code: string; onJoined: (meetingI
 
   if (mode !== "join") {
     return (
-      <main>
-        <h2>Sign in to join</h2>
-        <p>This invite needs an IntellMeet account. After sign-in you return here.</p>
+      <div className="w-full max-w-md space-y-4">
+        <div className="space-y-1 text-center">
+          <h2 className="text-lg font-semibold tracking-tight">Sign in to join</h2>
+          <p className="text-sm text-pretty text-muted-foreground">
+            This invite needs an IntellMeet account. After sign-in you return here.
+          </p>
+        </div>
         {mode === "login" ? (
           <LoginPage onSwitch={() => setMode("register")} />
         ) : (
           <RegisterPage onSwitch={() => setMode("login")} />
         )}
-        <button type="button" onClick={() => { setMode("join"); void load(); }}>
+        <Button
+          type="button"
+          variant="ghost"
+          className="w-full"
+          onClick={() => {
+            setMode("join");
+            void load();
+          }}
+        >
           I already signed in — continue
-        </button>
-        {error && <p role="alert">{error}</p>}
-      </main>
+        </Button>
+        {error && (
+          <p
+            role="alert"
+            className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+          >
+            {error}
+          </p>
+        )}
+      </div>
     );
   }
 
   if (loading) {
     return (
-      <main>
-        <p>Loading invite…</p>
-      </main>
+      <div className="w-full max-w-md">
+        <Card>
+          <CardContent>
+            <LoadingState label="Loading invite…" />
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
   if (error || !info) {
     return (
-      <main>
-        <h2>Invite unavailable</h2>
-        <p role="alert">{error || "Unknown invite."}</p>
-        <button type="button" onClick={() => void load()}>
-          Retry
-        </button>
-      </main>
+      <div className="w-full max-w-md">
+        <Card>
+          <CardContent className="space-y-4 pt-6">
+            <ErrorState title="Invite unavailable" message={error || "Unknown invite."} />
+            <Button type="button" variant="outline" className="w-full" onClick={() => void load()}>
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
   if (info.status === "ended") {
     return (
-      <main>
-        <h2>{info.title || "Meeting"}</h2>
-        <p>This meeting has ended.</p>
-      </main>
+      <div className="w-full max-w-md">
+        <InviteCard title={info.title || "Meeting"} description="This meeting has ended." />
+      </div>
     );
   }
 
   if (info.admission !== "link") {
     return (
-      <main>
-        <h2>{info.title || "Meeting"}</h2>
-        <p>This meeting does not accept link joins. Ask the host to admit you.</p>
-      </main>
+      <div className="w-full max-w-md">
+        <InviteCard
+          title={info.title || "Meeting"}
+          description="This meeting does not accept link joins. Ask the host to admit you."
+        />
+      </div>
     );
   }
 
   if (info.membership === "removed") {
     return (
-      <main>
-        <h2>{info.title || "Meeting"}</h2>
-        <p>You cannot join this meeting.</p>
-      </main>
+      <div className="w-full max-w-md">
+        <InviteCard title={info.title || "Meeting"} description="You cannot join this meeting." />
+      </div>
     );
   }
 
   return (
-    <main>
-      <h2>{info.title || "Meeting"}</h2>
-      {info.membership === "admitted" || info.membership === "host" ? (
-        <p>You are already a member.</p>
-      ) : (
-        <p>You are invited as a participant.</p>
-      )}
-      <button type="button" onClick={() => void join()} disabled={joining}>
-        {joining ? "Joining…" : "Join meeting"}
-      </button>
-      {error && <p role="alert">{error}</p>}
-    </main>
+    <div className="w-full max-w-md">
+      <InviteCard
+        title={info.title || "Meeting"}
+        description={
+          info.membership === "admitted" || info.membership === "host"
+            ? "You are already a member."
+            : "You are invited as a participant."
+        }
+      >
+        <Button type="button" className="w-full" onClick={() => void join()} disabled={joining}>
+          {joining ? "Joining…" : "Join meeting"}
+        </Button>
+        {error && (
+          <p
+            role="alert"
+            className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+          >
+            {error}
+          </p>
+        )}
+      </InviteCard>
+    </div>
   );
 }

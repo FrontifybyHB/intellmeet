@@ -8,6 +8,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 
+import { LoadingState } from "@/components/common/LoadingState";
 import { NotFound } from "@/components/NotFound";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { PublicRoute } from "@/components/PublicRoute";
@@ -37,8 +38,8 @@ const ApiTestBench = lazy(() =>
 
 function RouteLoadingFallback() {
   return (
-    <main>
-      <p>Loading…</p>
+    <main className="flex min-h-svh items-center justify-center bg-background px-4">
+      <LoadingState label="Loading…" />
     </main>
   );
 }
