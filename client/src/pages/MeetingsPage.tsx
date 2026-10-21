@@ -1,4 +1,9 @@
+import { Plus, Video } from "lucide-react";
 import { Link } from "react-router-dom";
+
+import { EmptyState } from "@/components/common/EmptyState";
+import { PageHeader } from "@/components/common/PageHeader";
+import { Button } from "@/components/ui/button";
 import { ROUTES } from "@/routes/paths";
 
 /**
@@ -7,12 +12,30 @@ import { ROUTES } from "@/routes/paths";
  */
 export function MeetingsPage() {
   return (
-    <main>
-      <h1>Meetings</h1>
-      <p>Your meeting list and management tools will live here.</p>
-      <nav aria-label="Meeting actions">
-        <Link to={ROUTES.newMeeting}>Create a meeting</Link>
-      </nav>
-    </main>
+    <div className="space-y-6">
+      <PageHeader
+        title="Meetings"
+        description="Your meeting list and management tools will live here."
+        actions={
+          <Button asChild>
+            <Link to={ROUTES.newMeeting}>
+              <Plus aria-hidden="true" />
+              New meeting
+            </Link>
+          </Button>
+        }
+      />
+
+      <EmptyState
+        icon={Video}
+        title="No meetings yet"
+        description="Create a meeting to get a share link you can send to participants."
+        action={
+          <Button asChild variant="outline">
+            <Link to={ROUTES.newMeeting}>Create a meeting</Link>
+          </Button>
+        }
+      />
+    </div>
   );
 }

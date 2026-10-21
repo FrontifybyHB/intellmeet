@@ -97,7 +97,7 @@ export function ApiTestBench() {
   };
 
   return (
-    <main>
+    <div className="space-y-4">
       <h1>API Test Bench (raw)</h1>
       <div>
         <label>meetingId <input value={meetingId} onChange={(e) => setMeetingId(e.target.value)} size={30} /></label>
@@ -302,6 +302,6 @@ export function ApiTestBench() {
         </div>
         <pre>{lkInfo}</pre>
       </section>
-    </main>
+    </div>
   );
 }

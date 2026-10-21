@@ -96,7 +96,7 @@ export function PostMeeting() {
   );
 
   return (
-    <main>
+    <div className="space-y-4">
       <h2>Post-meeting</h2>
       <button type="button" onClick={() => void loadHistory()}>Load history</button>
       <ul>
@@ -134,6 +134,6 @@ export function PostMeeting() {
           </li>
         ))}
       </ul>
-    </main>
+    </div>
   );
 }

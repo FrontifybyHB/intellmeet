@@ -1,4 +1,5 @@
 import type { SafeUser } from "@/services/api";
+import { ThemeProvider } from "@/components/theme/theme-provider";
 import { AppRoutes } from "@/routes/AppRoutes";
 import { ROUTES, meetingPath } from "@/routes/paths";
 import { render, screen } from "@testing-library/react";
@@ -46,9 +47,11 @@ function mockAuth(user: SafeUser | null, loading = false) {
 
 function renderApp(path: string, options: { dev?: boolean } = {}) {
   return render(
-    <MemoryRouter initialEntries={[path]}>
-      <AppRoutes dev={options.dev} />
-    </MemoryRouter>,
+    <ThemeProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <AppRoutes dev={options.dev} />
+      </MemoryRouter>
+    </ThemeProvider>,
   );
 }
 
