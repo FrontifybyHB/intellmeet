@@ -6,11 +6,13 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "node --test tests/env.test.js tests/middleware.test.js tests/startup.test.js tests/auth.test.js tests/meetingJoin.test.js tests/meetingJoinOptimization.test.js tests/meetingChat.test.js tests/meetingRecording.test.js tests/meetingTranscription.test.js tests/meetingIntelligence.test.js tests/postMeetingIntegration.test.js tests/meetingManage.test.js tests/meetingShareLinks.test.js",
+    "test": "node --test tests/env.test.js tests/middleware.test.js tests/startup.test.js tests/auth.test.js tests/livekitService.test.js tests/meetingJoin.test.js tests/meetingJoinOptimization.test.js tests/meetingChat.test.js tests/meetingRecording.test.js tests/recordingRateLimit.test.js tests/meetingTranscription.test.js tests/transcriptionAudioExtraction.test.js tests/meetingIntelligence.test.js tests/postMeetingIntegration.test.js tests/meetingManage.test.js tests/meetingShareLinks.test.js",
     "worker:transcription": "node src/queues/transcriptionWorker.js",
     "worker:intelligence": "node src/queues/intelligenceWorker.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1156.0",
+    "@aws-sdk/s3-request-presigner": "^3.1156.0",
     "@google/genai": "^2.29.0",
     "argon2": "^0.44.0",
     "bcryptjs": "^3.0.3",
@@ -20,6 +22,7 @@
     "express": "^4.21.2",
     "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
+    "livekit-server-sdk": "2.19.1",
     "mongoose": "^8.9.5",
     "socket.io": "^4.8.4"
   },

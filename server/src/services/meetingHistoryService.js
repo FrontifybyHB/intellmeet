@@ -106,7 +106,7 @@ async function listMeetings({ userId, cursor, limit }) {
   const after = validateHistoryCursor(cursor);
   const pageSize = validateHistoryLimit(limit);
   const admittedIds = await collectAdmittedMeetingIds(userId);
-  const filter = { $or: [{ hostId: userId }, { _id: { $in: admittedIds } }] };
+  const filter = { status: { $ne: "cancelled" }, $or: [{ hostId: userId }, { _id: { $in: admittedIds } }] };
   if (after) {
     filter._id = { $lt: new mongoose.Types.ObjectId(after) };
   }
@@ -136,6 +136,9 @@ async function authorizeHistoryRead({ meetingIdParam, userId }) {
     joinCode: 1,
   }).lean();
   if (!meeting) {
+    throw new AppError(HTTP_STATUS.NOT_FOUND, "Meeting not found.", "MEETING_NOT_FOUND");
+  }
+  if (meeting.status === "cancelled") {
     throw new AppError(HTTP_STATUS.NOT_FOUND, "Meeting not found.", "MEETING_NOT_FOUND");
   }
   const isHost = String(meeting.hostId) === String(userId);

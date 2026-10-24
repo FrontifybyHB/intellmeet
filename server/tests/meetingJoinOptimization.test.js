@@ -222,7 +222,7 @@ describe("meeting join optimization", () => {
         assert.equal(body.roomName, `meeting_${meetingId.toString()}`);
         const claims = decodePayload(body.token);
         assert.equal(claims.sub, memberId.toString());
-        assert.equal(claims.grants.room, `meeting_${meetingId.toString()}`);
+        assert.equal(claims.video.room, `meeting_${meetingId.toString()}`);
       }
     } finally {
       delete MeetingParticipant.create;

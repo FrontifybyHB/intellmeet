@@ -89,6 +89,66 @@ fail with `403 CSRF_REQUIRED`/`CSRF_INVALID`. Requests carrying an
 `Authorization: Bearer` header are exempt (custom header is not
 forgeable cross-origin). `GET` reads need no CSRF token.
 
+## Recording consent and recordings
+
+Consent is per person, per meeting, and is owned by the **caller**: the
+server binds `userId` from the verified session, so a participant can read
+and write only their own row. The host has no privileged path to another
+participant's row. AI-transfer permission is a **separate** field
+(`aiTransfer`: `approved`/`declined`/`undecided`) and is never inferred
+from the recording decision in either direction.
+
+| Method & path | Auth | Success | Notable errors |
+|---|---|---|---|
+| `GET /api/meetings/:id/recording-consent` | required | `200 { noticeVersion, consent }` — `consent` is the caller's own row or `null` | `403 NOT_A_MEMBER`/`NOT_ADMITTED` |
+| `POST /api/meetings/:id/recording-consent` | required + CSRF | `200 { consent }` | `400 VALIDATION_ERROR` (`decision` must be `approved`/`declined`), `409 NOTICE_VERSION_MISMATCH` |
+| `POST /api/meetings/:id/recordings/start` | host only + CSRF | `200 { recording, resumed }` | `403 NOT_HOST`, `403 CONSENT_BLOCKED`, `429 OVERLOADED`, `503 INTEGRATION_BLOCKER` |
+| `POST /api/meetings/:id/recordings/:recordingId/stop` | host only + CSRF | `200 { recording, resumed }` | `403 NOT_HOST`, `404 RECORDING_NOT_FOUND` |
+| `GET /api/meetings/:id/recordings?limit=` | required | `200 { recordings, hasMore }` — newest-first | `400 VALIDATION_ERROR` (bad `limit`) |
+| `GET /api/meetings/:id/recordings/:recordingId` | required | `200 { recording }` | `404 RECORDING_NOT_FOUND` |
+| `GET /api/meetings/:id/recordings/:recordingId/url` | required | `200 { url, expiresAt }` | `409 RECORDING_NOT_FOUND` (not ready), `503 INTEGRATION_BLOCKER` (storage unconfigured) |
+
+`noticeVersion` must echo the version the server currently requires; a
+stale version is rejected with `409 NOTICE_VERSION_MISMATCH` and the
+caller has to read the notice again. Declining after approving triggers a
+server-side quarantine of any in-flight attempt, so the output can never
+become `ready`.
+
+`limit` is the only window control: default `50`, capped at `100`. There
+is **no cursor** — `hasMore: true` means older recordings exist that the
+response cannot address, not that a second page can be fetched.
+
+Recording states are durable and server-owned:
+`requested → starting → active → stopping → verifying → ready`, with
+`failed`, `aborted` and `unknown` as alternatives. Terminal states
+(`ready`/`failed`/`aborted`) never regress; every transition is a
+version-checked write, so a stale or reordered provider callback cannot
+reopen a finished attempt. `unknown` means *unresolved*, not *absent*:
+the provider did not answer and the attempt is being reconciled.
+
+Start is idempotent per (meeting, session): a second start while an
+attempt is in flight returns the existing attempt with `resumed: true`.
+Stop is idempotent: stopping an already terminal or already-stopping
+attempt returns it unchanged with `resumed: true`.
+
+The server publishes `recording:status { meetingId, recording }` and
+`recording:ready { meetingId, recordingId, state }` to the meeting room
+(`meeting_<id>`), so a socket must have joined via `meeting:join` to
+receive them. Exactly-once delivery is not promised, and a **failed**
+start emits no status event — the authoritative state is recovered with
+the `GET` endpoints above.
+
+One response shape is worth calling out because it is unusual: when the
+provider times out in a way the server cannot resolve
+(`PROVIDER_TIMEOUT_UNKNOWN`), the request fails **and** the durable
+attempt travels inside the error body as `{ recording, error }`. A caller
+that discards the error body would conclude that nothing happened while
+an attempt exists. Read the body before treating a failed start as
+"no recording was created".
+
+Client-side implementation and verification of this section:
+[`docs/frontend-cleanup/08-c4a-recording-integration.md`](./frontend-cleanup/08-c4a-recording-integration.md).
+
 ## Action items → Tasks
 
 `POST /api/meetings/:id/action-items/:itemId/task` (host only,
@@ -101,3 +161,27 @@ rate-limited, CSRF-protected) materializes exactly one `Task` per
 - `200 { task, item, resumed: true }` on duplicate POSTs and
   timeout-after-success replays (same `task.id`, same
   `idempotencyKey`; `Task.countDocuments({ actionItemId }) === 1`).
+# Meeting permissions and invite updates
+
+Meeting ownership is the authenticated creator (`Meeting.hostId`), never a
+client-supplied role or the first media arrival. The owner may end the meeting
+and grant or revoke `canRecord` for an admitted participant through
+`PATCH /api/meetings/:meetingId/members/:userId/recording-permission` with
+`{ "canRecord": true|false }`. Recording start/stop checks the live meeting
+capability on every request; ordinary participants default to `false`.
+
+Invite URLs are stable opaque `/join/:code` links built from `CLIENT_URL`.
+`GET /api/meeting-links/:code` exposes only safe meeting metadata. An explicit
+`POST /api/meeting-links/:code/join` may use an account or a validated
+`displayName` for a short-lived, meeting-scoped guest cookie (`im_gt`). Guest
+credentials are not account sessions and cannot access account/history APIs.
+
+The owner uses `POST /api/meetings/:meetingId/end`; participants use the room's
+Leave action, which only disconnects their own media and socket.
+
+An owner may then call `DELETE /api/meetings/:meetingId` with CSRF protection.
+This is an idempotent soft deletion: it changes the meeting to `cancelled`,
+removes it from normal history and detail reads, and blocks future join and
+meeting-scoped access. It does not hard-delete retained recording/media data.
+Deleting a live meeting returns `409 MEETING_ACTIVE`; the owner must explicitly
+end it first. Non-owners receive `403 NOT_HOST`.

@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   ChevronsUpDown,
   FileText,
+  FileAudio,
   FlaskConical,
   House,
   LogOut,
@@ -11,13 +12,13 @@ import {
   Video,
   type LucideIcon,
 } from "lucide-react";
-import { Link, NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 
-import { useAuth } from "@/auth/AuthContext";
-import { Brand } from "@/components/common/Brand";
-import { ThemeToggle } from "@/components/theme/theme-toggle";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
+import { useAuth } from "@/features/auth/useAuth";
+import { Brand } from "@/shared/ui/Brand";
+import { ThemeToggle } from "@/shared/ui/theme/theme-toggle";
+import { Avatar, AvatarFallback } from "@/shared/ui/avatar";
+import { Button } from "@/shared/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,7 +26,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@/shared/ui/dropdown-menu";
 import {
   Sheet,
   SheetContent,
@@ -33,11 +34,11 @@ import {
   SheetHeader,
   SheetTitle,
   SheetTrigger,
-} from "@/components/ui/sheet";
-import { IS_DEV } from "@/config/env";
-import { initialsOf } from "@/lib/initials";
-import { cn } from "@/lib/utils";
-import { ROUTES } from "@/routes/paths";
+} from "@/shared/ui/sheet";
+import { IS_DEV } from "@/shared/config/env";
+import { initialsOf } from "@/shared/lib/initials";
+import { cn } from "@/shared/lib/utils";
+import { getRouteShellMeta, ROUTES } from "@/app/paths";
 
 interface NavItem {
   to: string;
@@ -47,8 +48,9 @@ interface NavItem {
 }
 
 const PRIMARY_NAV: NavItem[] = [
-  { to: ROUTES.home, label: "Home", icon: House, end: true },
+  { to: ROUTES.authenticatedHome, label: "Home", icon: House, end: true },
   { to: ROUTES.meetings, label: "Meetings", icon: Video },
+  { to: ROUTES.recordings, label: "Recordings", icon: FileAudio },
   { to: ROUTES.account, label: "Account", icon: UserRound },
 ];
 
@@ -57,7 +59,7 @@ const DEV_NAV: NavItem[] = IS_DEV
   ? [
       { to: ROUTES.devLab, label: "Meeting Lab", icon: FlaskConical },
       { to: ROUTES.devPost, label: "Post-meeting", icon: FileText },
-      { to: ROUTES.devBench, label: "API Test Bench", icon: Terminal },
+      // { to: ROUTES.devBench, label: "API Test Bench", icon: Terminal },
     ]
   : [];
 
@@ -180,6 +182,8 @@ function SidebarFooter() {
  */
 export function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { pathname } = useLocation();
+  const routeMeta = getRouteShellMeta(pathname);
   const closeMobile = () => setMobileOpen(false);
 
   return (
@@ -194,7 +198,7 @@ export function AppLayout() {
       <aside className="sticky top-0 hidden h-svh w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground lg:flex">
         <div className="flex h-16 shrink-0 items-center border-b border-sidebar-border px-5">
           <Link
-            to={ROUTES.home}
+            to={ROUTES.authenticatedHome}
             className="rounded-md focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-none"
           >
             <Brand />
@@ -207,6 +211,22 @@ export function AppLayout() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-30 hidden h-16 items-center justify-between gap-4 border-b bg-background/90 px-6 backdrop-blur lg:flex lg:px-8">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold">
+              {routeMeta.title}
+            </p>
+            <nav aria-label="Breadcrumb" className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+              {routeMeta.breadcrumbs.map((crumb, index) => (
+                <span key={`${crumb}-${index}`}>
+                  {index > 0 ? " / " : ""}
+                  {crumb}
+                </span>
+              ))}
+            </nav>
+          </div>
+          <ThemeToggle />
+        </header>
         <header className="sticky top-0 z-30 flex h-16 items-center gap-2 border-b bg-background/90 px-3 backdrop-blur lg:hidden">
           <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
             <SheetTrigger asChild>
@@ -234,11 +254,20 @@ export function AppLayout() {
           </Sheet>
 
           <Link
-            to={ROUTES.home}
+            to={ROUTES.authenticatedHome}
             className="rounded-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           >
             <Brand />
           </Link>
+
+          <div className="min-w-0 pl-1">
+            <p className="truncate text-sm font-semibold" data-testid="route-shell-title">
+              {routeMeta.title}
+            </p>
+            <p className="truncate text-xs text-muted-foreground">
+              {routeMeta.breadcrumbs.join(" / ")}
+            </p>
+          </div>
 
           <div className="ml-auto">
             <ThemeToggle />

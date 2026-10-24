@@ -14,6 +14,7 @@ const joinMeeting = asyncHandler(async (req, res) => {
     const result = await authorizeJoin({
       meetingIdParam: req.params.id,
       userId: req.user.id,
+      userName: req.user.name,
     });
     outcome = "OK";
     // Token responses must never be stored by browsers or proxies: each

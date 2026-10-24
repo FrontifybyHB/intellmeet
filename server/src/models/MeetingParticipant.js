@@ -23,6 +23,9 @@ const meetingParticipantSchema = new mongoose.Schema(
       default: "invited",
       index: true,
     },
+    // Recording is an explicit meeting-scoped capability. It is never
+    // inferred from application role or client state.
+    canRecord: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

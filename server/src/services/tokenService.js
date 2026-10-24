@@ -21,6 +21,7 @@ const ISSUER = "intellmeet";
 const AUDIENCE = "intellmeet-app";
 const PURPOSE_ACCESS = "access";
 const PURPOSE_REFRESH = "refresh";
+const PURPOSE_GUEST = "guest";
 
 function masterSecret() {
   // getEnv validated centrally; missing secret is a boot/config error
@@ -170,6 +171,14 @@ function verifyToken(token, expectedPurpose) {
     e.code = "TOKEN_INVALID";
     throw e;
   }
+  // jsonwebtoken permits tokens without an exp claim unless callers require
+  // one explicitly. This service never issues non-expiring credentials, and
+  // accepting one would leave HTTP and idle socket access open indefinitely.
+  if (!Number.isInteger(payload.exp) || payload.exp <= 0) {
+    const e = new Error("Invalid or expired token.");
+    e.code = "TOKEN_INVALID";
+    throw e;
+  }
   if (typeof payload.sub !== "string" || payload.sub.length === 0) {
     const e = new Error("Invalid or expired token.");
     e.code = "TOKEN_INVALID";
@@ -184,6 +193,35 @@ function verifyAccessToken(token) {
 
 function verifyRefreshToken(token) {
   return verifyToken(token, PURPOSE_REFRESH);
+}
+
+function mintGuestToken({ meetingId, displayName, guestId }) {
+  const master = masterSecret();
+  if (!master) throw new Error("Authentication is not configured.");
+  const cleanName = String(displayName || "").trim();
+  if (!guestId || !meetingId || cleanName.length < 1 || cleanName.length > 100) {
+    throw new Error("Invalid guest identity.");
+  }
+  const token = jwt.sign(
+    {
+      sub: String(guestId),
+      purpose: PURPOSE_GUEST,
+      meetingId: String(meetingId),
+      displayName: cleanName,
+    },
+    master,
+    {
+      algorithm: "HS256",
+      issuer: ISSUER,
+      audience: AUDIENCE,
+      expiresIn: AUTH_LIMITS.GUEST_TTL_SECONDS,
+    },
+  );
+  return { token, expiresIn: AUTH_LIMITS.GUEST_TTL_SECONDS };
+}
+
+function verifyGuestToken(token) {
+  return verifyToken(token, PURPOSE_GUEST);
 }
 
 // Unverified payload peek: ONLY for selecting a CSRF-binding candidate.
@@ -205,10 +243,13 @@ module.exports = {
   AUDIENCE,
   PURPOSE_ACCESS,
   PURPOSE_REFRESH,
+  PURPOSE_GUEST,
   newLoginContext,
   mintAccessToken,
   mintRefreshToken,
   verifyAccessToken,
   verifyRefreshToken,
+  mintGuestToken,
+  verifyGuestToken,
   peekPayload,
 };

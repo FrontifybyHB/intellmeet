@@ -4,6 +4,8 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { execFile } = require("node:child_process");
+const { promisify } = require("node:util");
 
 const AppError = require("../utils/AppError");
 const { HTTP_STATUS } = require("../constants/httpStatus");
@@ -18,9 +20,8 @@ const logger = require("../config/logger");
 // surface). Format handling without a media toolchain on this host:
 // - WAV (linear PCM, 16-bit) is parsed and sliced in-process for
 //   chunking; no subprocess, no shell, bounded buffers.
-// - Any other container (mp4/m4a/...) needs an audio extractor that
-//   is not installed here: the run is BLOCKED with
-//   EXTRACTION_UNAVAILABLE — explicit, never fabricated.
+// - Recorded MP4 needs ffmpeg on the transcription worker host to decode
+//   its audio track into the PCM WAV format used by the chunker.
 // - Missing/empty/silent input is a distinct outcome (NO_AUDIO), not
 //   invented text.
 //
@@ -200,6 +201,33 @@ function isDirectlySupportedMime(mime) {
   return WAV_MIME_HINTS.has(String(mime || "").toLowerCase());
 }
 
+async function extractMp4Audio(bytes, maxBytes) {
+  const dir = makeRunTempDir("mp4");
+  const input = path.join(dir, "input.mp4");
+  const output = path.join(dir, "audio.wav");
+  try {
+    fs.writeFileSync(input, bytes, { mode: 0o600 });
+    await promisify(execFile)(process.env.FFMPEG_PATH || "ffmpeg", [
+      "-nostdin", "-v", "error", "-y", "-i", input,
+      "-map", "0:a:0", "-vn", "-ac", "1", "-ar", "16000",
+      "-c:a", "pcm_s16le", output,
+    ], { timeout: 120000, maxBuffer: 1024 * 1024 });
+    const size = fs.statSync(output).size;
+    if (size > maxBytes) {
+      throw new AppError(HTTP_STATUS.UNPROCESSABLE_ENTITY, "Extracted audio is too large.", "AUDIO_TOO_LARGE");
+    }
+    return fs.readFileSync(output);
+  } catch (err) {
+    if (err && err.code === "ENOENT") {
+      throw new AppError(HTTP_STATUS.SERVICE_UNAVAILABLE, "ffmpeg is required on the transcription worker.", "EXTRACTION_UNAVAILABLE");
+    }
+    if (err instanceof AppError) throw err;
+    throw new AppError(HTTP_STATUS.UNPROCESSABLE_ENTITY, "Recording audio could not be extracted.", "AUDIO_FORMAT_UNSUPPORTED");
+  } finally {
+    removeDirSync(dir);
+  }
+}
+
 // Slice one WAV chunk [offsetMs, offsetMs+durationMs) into a new valid
 // WAV buffer. Pure function over bounded buffers; throws on bounds.
 function sliceWavChunk(source, parsed, offsetMs, durationMs) {
@@ -345,6 +373,7 @@ module.exports = {
   isSilentPcm,
   mimeForFormat,
   isDirectlySupportedMime,
+  extractMp4Audio,
   sliceWavChunk,
   planChunks,
   synthesizeWav,

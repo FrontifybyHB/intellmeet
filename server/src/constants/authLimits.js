@@ -18,11 +18,13 @@ const AUTH_LIMITS = {
   // password login. No infinite rolling renewal.
   ACCESS_TTL_SECONDS: 600,
   REFRESH_TTL_SECONDS: 7 * 24 * 3600,
+  GUEST_TTL_SECONDS: 2 * 3600,
   // Names/sizes.
   NAME_MAX_CHARS: 100,
   EMAIL_MAX_CHARS: 254,
   // Cookie names (Secure only in production https; see controller).
   ACCESS_COOKIE: "im_at",
+  GUEST_COOKIE: "im_gt",
   REFRESH_COOKIE: "im_rt",
   CSRF_COOKIE: "im_csrf",
   CSRF_HEADER: "x-csrf-token",

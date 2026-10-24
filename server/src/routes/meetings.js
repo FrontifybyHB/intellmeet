@@ -11,7 +11,7 @@ const {
   getMeetingRecording,
   getRecordingAccessLink,
 } = require("../controllers/recordingController");
-const { endMeetingHandler } = require("../controllers/meetingEndController");
+const { endMeetingHandler, deleteMeetingHandler } = require("../controllers/meetingEndController");
 const {
   startTranscription,
   cancelTranscriptionHandler,
@@ -31,6 +31,7 @@ const { csrfProtect } = require("../middleware/csrf");
 const joinRateLimit = require("../middleware/joinRateLimit");
 const transcriptionRateLimit = require("../middleware/transcriptionRateLimit");
 const intelligenceRateLimit = require("../middleware/intelligenceRateLimit");
+const recordingRateLimit = require("../middleware/recordingRateLimit");
 const { joinMeeting } = require("../controllers/meetingJoinController");
 const { listMessages } = require("../controllers/meetingMessageController");
 const {
@@ -40,6 +41,7 @@ const {
 const {
   createMeetingHandler,
   admitMemberHandler,
+  setRecordingPermissionHandler,
 } = require("../controllers/meetingManageController");
 
 const router = express.Router();
@@ -49,6 +51,7 @@ const router = express.Router();
 // CRUD owns the canonical contract; this defers to it when it lands.
 router.post("/", requireAuth, csrfProtect, createMeetingHandler);
 router.post("/:id/members", requireAuth, csrfProtect, admitMemberHandler);
+router.patch("/:id/members/:userId/recording-permission", requireAuth, csrfProtect, setRecordingPermissionHandler);
 
 // Phase 6: entitled post-meeting reads. History lists hosted/admitted
 // meetings (projected summaries, cursor pages); detail returns status
@@ -56,6 +59,7 @@ router.post("/:id/members", requireAuth, csrfProtect, admitMemberHandler);
 // endpoints. Reads never enqueue work or create tasks.
 router.get("/", requireAuth, listMeetingsHandler);
 router.get("/:id", requireAuth, getMeetingDetailHandler);
+router.delete("/:id", requireAuth, csrfProtect, deleteMeetingHandler);
 
 router.post("/:id/join", requireAuth, csrfProtect, joinRateLimit, joinMeeting);
 router.get("/:id/messages", requireAuth, listMessages);
@@ -67,11 +71,12 @@ router.get("/:id/messages", requireAuth, listMessages);
 // there is no Bearer exemption (cookies are the only credential path).
 router.post("/:id/recording-consent", requireAuth, csrfProtect, setRecordingConsent);
 router.get("/:id/recording-consent", requireAuth, getRecordingConsent);
-router.post("/:id/recordings/start", requireAuth, csrfProtect, startMeetingRecording);
+router.post("/:id/recordings/start", requireAuth, csrfProtect, recordingRateLimit, startMeetingRecording);
 router.post(
   "/:id/recordings/:recordingId/stop",
   requireAuth,
   csrfProtect,
+  recordingRateLimit,
   stopMeetingRecording
 );
 router.get("/:id/recordings", requireAuth, listMeetingRecordings);
@@ -79,6 +84,7 @@ router.get("/:id/recordings/:recordingId", requireAuth, getMeetingRecording);
 router.get(
   "/:id/recordings/:recordingId/url",
   requireAuth,
+  recordingRateLimit,
   getRecordingAccessLink
 );
 router.post("/:id/end", requireAuth, csrfProtect, endMeetingHandler);

@@ -17,7 +17,7 @@ const MeetingParticipant = require("../models/MeetingParticipant");
 // cached, so removal/end take effect on the next join, send, or history
 // page. Both reads project only the fields needed and use lean() (these
 // schemas have no getters, virtuals, or document middleware).
-async function authorizeMeetingAccess({ meetingIdParam, userId }) {
+async function authorizeMeetingAccess({ meetingIdParam, userId, guest }) {
   if (
     typeof meetingIdParam !== "string" ||
     !mongoose.Types.ObjectId.isValid(meetingIdParam)
@@ -55,7 +55,11 @@ async function authorizeMeetingAccess({ meetingIdParam, userId }) {
     );
   }
 
-  const isHost = String(meeting.hostId) === String(userId);
+  if (guest && String(guest.meetingId) !== String(meeting._id)) {
+    throw new AppError(HTTP_STATUS.FORBIDDEN, "Guest credential is not valid for this meeting.", "MEETING_SCOPE_DENIED");
+  }
+  const isHost = !guest && String(meeting.hostId) === String(userId);
+  if (guest) return { meetingId: meeting._id, isHost: false };
   if (!isHost) {
     const membership = await MeetingParticipant.findOne(
       { meetingId: meeting._id, userId },

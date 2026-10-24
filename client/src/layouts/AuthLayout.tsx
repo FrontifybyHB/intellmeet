@@ -1,8 +1,8 @@
 import { Link, Outlet } from "react-router-dom";
 
-import { Brand } from "@/components/common/Brand";
-import { ThemeToggle } from "@/components/theme/theme-toggle";
-import { ROUTES } from "@/routes/paths";
+import { Brand } from "@/shared/ui/Brand";
+import { ThemeToggle } from "@/shared/ui/theme/theme-toggle";
+import { ROUTES } from "@/app/paths";
 
 /**
  * Signed-out shell (login, register, invite landing). Owns the page `<main>`

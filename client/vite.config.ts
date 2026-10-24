@@ -2,10 +2,10 @@ import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { loadEnv } from "vite";
-import { defineConfig } from "vitest/config";
+import { defineConfig } from "vite";
 
-// Documented local backend (see server/.env.example: PORT=5000).
-const DEFAULT_PROXY_TARGET = "http://localhost:5000";
+// The backend the dev server proxies to (see server/.env: PORT=3000).
+const DEFAULT_PROXY_TARGET = "http://localhost:3000";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, ".", "VITE_");
@@ -33,13 +33,6 @@ export default defineConfig(({ mode }) => {
         // a bare "/dev" prefix would swallow the app's own /dev/* routes.
         "/dev/meeting-lab": { target: proxyTarget },
       },
-    },
-    test: {
-      environment: "jsdom",
-      setupFiles: ["./src/test/setup.ts"],
-      include: ["src/**/*.{test,spec}.{ts,tsx}"],
-      css: false,
-      restoreMocks: true,
     },
   };
 });

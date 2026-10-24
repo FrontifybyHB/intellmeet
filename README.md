@@ -124,7 +124,7 @@ Create a local `.env` file inside `server/` and configure the required environme
 Example:
 
 ```env
-PORT=5000
+PORT=3000
 CLIENT_URL=http://localhost:5173
 MONGODB_URI=your_mongodb_connection_string
 JWT_SECRET=replace_with_a_secure_random_secret
@@ -141,7 +141,7 @@ npm run dev
 
 If the backend health endpoint has been implemented, verify it at:
 
-`http://localhost:5000/api/health`
+`http://localhost:3000/api/health`
 
 ### Environment Configuration
 

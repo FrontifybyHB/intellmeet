@@ -1,14 +1,14 @@
 import { defineConfig, devices } from "@playwright/test";
 
 // Prerequisites (not started by this spec): the API must already be running
-// (default http://localhost:5000 — see server/.env.example PORT=5000). The
+// (default http://localhost:3000 — see server/.env PORT=3000). The
 // client dev server is started below unless E2E_BASE_URL targets a deployed
 // app. The dev server proxies /api and /socket.io to the API, so no
 // VITE_API_URL override is needed.
 const baseURL = process.env.E2E_BASE_URL || "http://localhost:5173";
 
 export default defineConfig({
-  testDir: "./e2e",
+  testDir: "./tests/e2e",
   timeout: 60_000,
   fullyParallel: false,
   retries: 0,

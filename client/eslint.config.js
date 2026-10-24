@@ -36,9 +36,9 @@ export default tseslint.config(
     // Node-context files: dev-server config, e2e specs and test setup.
     files: [
       "*.config.{js,ts}",
-      "e2e/**/*.ts",
-      "src/test/**/*.{ts,tsx}",
-      "src/**/*.{test,spec}.{ts,tsx}",
+      "tests/e2e/**/*.ts",
+      "tests/setup/**/*.{ts,tsx}",
+      "tests/**/*.{test,spec}.{ts,tsx}",
     ],
     languageOptions: {
       globals: { ...globals.node },

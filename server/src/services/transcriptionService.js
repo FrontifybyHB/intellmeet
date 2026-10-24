@@ -198,6 +198,14 @@ function emitTranscriptionStatus(meetingIdParam, recordingDoc) {
       runVersion: tx.publishedRunVersion,
       state: TRANSCRIPTION_STATES.COMPLETE,
     });
+    // Intelligence starts from the durable published transcript and does not
+    // require the meeting page to remain open.
+    try {
+      const { maybeAutoEnqueue } = require("./intelligenceService");
+      void maybeAutoEnqueue({ meetingId: meetingIdParam, recordingId: recordingDoc._id });
+    } catch (_unused) {
+      // The intelligence reconciler can retry after a restart/configuration gap.
+    }
   }
 }
 

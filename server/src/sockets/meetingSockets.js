@@ -165,10 +165,7 @@ function attachMeetingSockets(httpServer) {
       return;
     }
     const token = resolveToken(socket);
-    if (!token) {
-      next(handshakeError("UNAUTHORIZED", "Authentication required."));
-      return;
-    }
+    if (!token) { next(handshakeError("UNAUTHORIZED", "Authentication required.")); return; }
     let payload;
     try {
       payload = verifyAccessToken(token);
@@ -218,7 +215,27 @@ function attachMeetingSockets(httpServer) {
   io.on("connection", (socket) => {
     chatMetrics.socketConnected();
 
+    // Per-event expiry checks protect writes, but an idle subscribed socket
+    // must also stop receiving room broadcasts when its token expires.
+    const expiresAt = Number(socket.data.authExp) * 1000;
+    const authExpiryTimer = Number.isFinite(expiresAt)
+      ? setTimeout(() => {
+          try {
+            socket.emit("auth:revoked", { reason: "TOKEN_EXPIRED" });
+            socket.disconnect(true);
+          } catch (_unused) {
+            // Socket may already be gone.
+          }
+        }, Math.max(0, expiresAt - Date.now()))
+      : null;
+    if (authExpiryTimer && typeof authExpiryTimer.unref === "function") {
+      authExpiryTimer.unref();
+    }
+
     socket.on("disconnect", () => {
+      if (authExpiryTimer) {
+        clearTimeout(authExpiryTimer);
+      }
       // Room membership is per-socket: the engine drops this socket's
       // rooms only. Other tabs/devices of the same user are unaffected,
       // and socket.id is never treated as user identity.
@@ -257,11 +274,14 @@ function attachMeetingSockets(httpServer) {
         return;
       }
       let history = { messages: [], nextCursor: null, hasMore: false, newestCursor: null };
+      const hasLastCursor = lastCursor !== undefined && lastCursor !== null && lastCursor !== "";
       // Subscribe-then-catch-up: authorize, join the room, THEN read
       // newer-than-cursor so messages sent during the race still reach
       // the socket live; the client dedupes live vs stored by message
-      // id. getHistory re-authorizes (one extra indexed read) rather
-      // than trusting the pre-join check across the await boundary.
+      // id. A first join establishes a cursor baseline but does not
+      // replay old messages; HTTP history owns initial history loading.
+      // getHistory re-authorizes (one extra indexed read) rather than
+      // trusting the pre-join check across the await boundary.
       try {
         await authorizeMeetingAccess({
           meetingIdParam,
@@ -287,36 +307,34 @@ function attachMeetingSockets(httpServer) {
       }
       socket.data.rooms.add(meetingIdParam);
       chatMetrics.observeRoomJoin();
-      if (
-        lastCursor !== undefined &&
-        lastCursor !== null &&
-        lastCursor !== ""
-      ) {
-        try {
-          history = await getHistory({
-            meetingIdParam,
-            userId: socket.data.userId,
-            limit: undefined,
-            cursor: lastCursor,
-            direction: "newer",
-          });
-        } catch (err) {
-          const code =
-            err && typeof err.code === "string" ? err.code : "INTERNAL_ERROR";
-          chatMetrics.observeReject(code);
-          // Joined but catch-up failed: report explicitly so the client
-          // repairs via the history endpoint instead of assuming sync.
-          if (typeof ack === "function") {
-            ack({ ok: true, room, messages: [], nextCursor: null, hasMore: true, newestCursor: null, catchUpError: code });
-          }
-          return;
+      try {
+        history = await getHistory({
+          meetingIdParam,
+          userId: socket.data.userId,
+          limit: undefined,
+          cursor: hasLastCursor ? lastCursor : undefined,
+          direction: hasLastCursor ? "newer" : "older",
+        });
+      } catch (err) {
+        const code =
+          err && typeof err.code === "string" ? err.code : "INTERNAL_ERROR";
+        chatMetrics.observeReject(code);
+        // Joined but catch-up failed: report explicitly so the client
+        // repairs via the history endpoint instead of assuming sync.
+        if (typeof ack === "function") {
+          ack({ ok: true, room, messages: [], nextCursor: null, hasMore: true, newestCursor: null, catchUpError: code });
         }
+        return;
       }
       if (typeof ack === "function") {
         ack({
           ok: true,
           room,
-          messages: history.messages,
+          // Never replay old messages for a first join. Returning the
+          // newest cursor still gives the client a stable reconnect
+          // boundary without making a socket join an unbounded history
+          // transport.
+          messages: hasLastCursor ? history.messages : [],
           nextCursor: history.nextCursor,
           hasMore: history.hasMore,
           newestCursor: history.newestCursor,

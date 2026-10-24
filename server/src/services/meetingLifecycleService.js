@@ -212,4 +212,28 @@ async function endMeeting({ meetingIdParam, userId }) {
   };
 }
 
-module.exports = { endMeeting };
+// Soft deletion is deliberately separate from ending a meeting. It hides the
+// meeting from product reads and blocks future joins without purging retained
+// recordings or database evidence.
+async function deleteMeeting({ meetingIdParam, userId }) {
+  if (typeof meetingIdParam !== "string" || !mongoose.Types.ObjectId.isValid(meetingIdParam)) {
+    throw new AppError(HTTP_STATUS.BAD_REQUEST, "Invalid meeting id.", "INVALID_MEETING_ID");
+  }
+  const meeting = await Meeting.findById(meetingIdParam, { hostId: 1, status: 1 }).lean();
+  if (!meeting) {
+    throw new AppError(HTTP_STATUS.NOT_FOUND, "Meeting not found.", "MEETING_NOT_FOUND");
+  }
+  if (String(meeting.hostId) !== String(userId)) {
+    throw new AppError(HTTP_STATUS.FORBIDDEN, "Only the host can delete the meeting.", "NOT_HOST");
+  }
+  if (meeting.status === "cancelled") {
+    return { meeting: { id: String(meeting._id), status: "cancelled" }, alreadyDeleted: true };
+  }
+  if (meeting.status !== "ended") {
+    throw new AppError(HTTP_STATUS.CONFLICT, "End the meeting before deleting it.", "MEETING_ACTIVE");
+  }
+  await Meeting.updateOne({ _id: meeting._id, status: "ended" }, { $set: { status: "cancelled" } });
+  return { meeting: { id: String(meeting._id), status: "cancelled" }, alreadyDeleted: false };
+}
+
+module.exports = { endMeeting, deleteMeeting };

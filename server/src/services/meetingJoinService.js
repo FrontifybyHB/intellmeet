@@ -6,6 +6,7 @@ const AppError = require("../utils/AppError");
 const { HTTP_STATUS } = require("../constants/httpStatus");
 const Meeting = require("../models/Meeting");
 const MeetingParticipant = require("../models/MeetingParticipant");
+const User = require("../models/User");
 const { mintJoinToken } = require("./livekitService");
 
 function roomNameFor(meetingId) {
@@ -37,7 +38,7 @@ function roomNameFor(meetingId) {
 // short TTL expires. Phase 1 has no provider-side revocation wired in;
 // lifecycle changes (removal/end) are owned by the Meeting owner and
 // must coordinate there. The short configurable TTL bounds the window.
-async function authorizeJoin({ meetingIdParam, userId }) {
+async function authorizeJoin({ meetingIdParam, userId, userName }) {
   if (
     typeof meetingIdParam !== "string" ||
     !mongoose.Types.ObjectId.isValid(meetingIdParam)
@@ -101,6 +102,9 @@ async function authorizeJoin({ meetingIdParam, userId }) {
   }
 
   const roomName = roomNameFor(meeting._id);
+  const profile = typeof userName === "string"
+    ? { name: userName }
+    : await User.findById(userId, { name: 1 }).lean();
   // Consent-safe admission: when a nonterminal capture is active and
   // this joiner has not approved the current recording notice, issue a
   // subscribe-only token so no new media can enter the captured source
@@ -144,9 +148,10 @@ async function authorizeJoin({ meetingIdParam, userId }) {
       canPublish = false;
     }
   }
-  const issued = mintJoinToken({
+  const issued = await mintJoinToken({
     identity: String(userId),
     roomName,
+    displayName: profile && typeof profile.name === "string" ? profile.name : "Participant",
     canPublish,
     canPublishData: canPublish,
   });
@@ -157,10 +162,16 @@ async function authorizeJoin({ meetingIdParam, userId }) {
     token: issued.token,
     permissions: {
       isHost,
-      canRecord: isHost,
+      canRecord: isHost || await participantCanRecord(meeting._id, userId),
       canScreenShare: true,
     },
   };
+}
+
+async function participantCanRecord(meetingId, userId) {
+  if (!userId) return false;
+  const row = await MeetingParticipant.findOne({ meetingId, userId, status: "admitted" }, { canRecord: 1 }).lean();
+  return Boolean(row?.canRecord);
 }
 
 module.exports = { authorizeJoin, roomNameFor };

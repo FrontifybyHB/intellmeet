@@ -3,6 +3,7 @@
 const AppError = require("../utils/AppError");
 const { HTTP_STATUS } = require("../constants/httpStatus");
 const ChatMessage = require("../models/ChatMessage");
+const User = require("../models/User");
 const { authorizeMeetingAccess } = require("./meetingAccessService");
 const {
   validateClientMessageId,
@@ -16,6 +17,7 @@ const {
 const HISTORY_PROJECTION = {
   meetingId: 1,
   senderId: 1,
+  senderName: 1,
   clientMessageId: 1,
   text: 1,
   createdAt: 1,
@@ -26,6 +28,9 @@ function serializeMessage(doc) {
     id: String(doc._id),
     meetingId: String(doc.meetingId),
     senderId: String(doc.senderId),
+    senderName: typeof doc.senderName === "string" && doc.senderName.trim()
+      ? doc.senderName.trim()
+      : "Participant",
     clientMessageId: doc.clientMessageId,
     text: doc.text,
     createdAt: new Date(doc.createdAt).toISOString(),
@@ -56,12 +61,17 @@ async function sendMessage({ meetingIdParam, userId, clientMessageId, text }) {
     meetingIdParam,
     userId,
   });
+  const sender = await User.findById(userId, { name: 1 }).lean();
+  const senderName = sender && typeof sender.name === "string" && sender.name.trim()
+    ? sender.name.trim().slice(0, 100)
+    : "Participant";
 
   let doc;
   try {
     doc = await ChatMessage.create({
       meetingId,
       senderId: userId,
+      senderName,
       clientMessageId: cleanId,
       text: cleanText,
     });

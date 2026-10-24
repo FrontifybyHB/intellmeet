@@ -176,6 +176,24 @@ describe("shareable meeting links", () => {
     assert.notEqual(a.json.joinUrl, b.json.joinUrl);
   });
 
+  it("allows only the owner to soft-delete an ended meeting", async () => {
+    const hostId = new mongoose.Types.ObjectId();
+    const otherId = new mongoose.Types.ObjectId();
+    await ensureUsers([hostId, otherId]);
+    const hostToken = signAuthToken(hostId.toString());
+    const created = await api("POST", "/api/meetings", hostToken, { title: "delete me" });
+
+    assert.equal((await api("DELETE", `/api/meetings/${created.json.meetingId}`, hostToken)).status, 409);
+    assert.equal((await api("POST", `/api/meetings/${created.json.meetingId}/end`, hostToken, {})).status, 200);
+    assert.equal((await api("DELETE", `/api/meetings/${created.json.meetingId}`, signAuthToken(otherId.toString()))).status, 403);
+
+    const deleted = await api("DELETE", `/api/meetings/${created.json.meetingId}`, hostToken);
+    assert.equal(deleted.status, 200);
+    assert.equal(deleted.json.meeting.status, "cancelled");
+    assert.equal((await api("GET", `/api/meetings/${created.json.meetingId}`, hostToken)).status, 404);
+    assert.equal((await api("DELETE", `/api/meetings/${created.json.meetingId}`, hostToken)).status, 200);
+  });
+
   it("valid invitee resolves then explicitly joins and gets a room token", async () => {
     const hostId = new mongoose.Types.ObjectId();
     const guestId = new mongoose.Types.ObjectId();

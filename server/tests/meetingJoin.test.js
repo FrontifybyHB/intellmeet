@@ -162,7 +162,7 @@ describe("POST /api/meetings/:id/join", () => {
     // behavior (purpose/issuer/expiry/version) is exercised for real.
     // Re-apply every test: afterEach restores the original.
     User.findById = () =>
-      queryLike({ status: "active", role: "user", authVersion: 0 });
+      queryLike({ name: "Asha Sharma", status: "active", role: "user", authVersion: 0 });
   });
 
   afterEach(() => {
@@ -186,6 +186,7 @@ describe("POST /api/meetings/:id/join", () => {
     assert.equal(body.roomName, `meeting_${meetingId.toString()}`);
     assert.equal(body.livekitUrl, "wss://livekit.test.example.com");
     assert.equal(typeof body.token, "string");
+    assert.equal(decodePayload(body.token).name, "Asha Sharma");
     assert.deepEqual(body.permissions, {
       isHost: false,
       canRecord: false,
@@ -311,11 +312,11 @@ describe("POST /api/meetings/:id/join", () => {
     const claims = decodePayload(body.token);
     assert.equal(claims.sub, memberId.toString());
     assert.equal(claims.iss, "test-livekit-key");
-    assert.equal(claims.grants.room, `meeting_${meetingId.toString()}`);
-    assert.equal(claims.grants.roomJoin, true);
-    assert.equal(claims.grants.canPublish, true);
-    assert.equal(claims.grants.canSubscribe, true);
-    assert.equal(claims.grants.roomAdmin, false);
+    assert.equal(claims.video.room, `meeting_${meetingId.toString()}`);
+    assert.equal(claims.video.roomJoin, true);
+    assert.equal(claims.video.canPublish, true);
+    assert.equal(claims.video.canSubscribe, true);
+    assert.equal(claims.video.roomAdmin, false);
     assert.ok(
       claims.exp - claims.iat <= 15 * 60 && claims.exp > claims.iat,
       "token must be short-lived"
@@ -341,7 +342,7 @@ describe("POST /api/meetings/:id/join", () => {
       const res = await postJoin(meetingId.toString(), signAuthToken(memberId.toString()));
       assert.equal(res.status, 200);
       const body = await res.json();
-      assert.equal(decodePayload(body.token).grants.canPublish, true);
+      assert.equal(decodePayload(body.token).video.canPublish, true);
       assert.equal(recordingCalls, 0, "disabled provider must not query Recording");
     } finally {
       Recording.findOne = originalRecordingFindOne;
@@ -364,8 +365,8 @@ describe("POST /api/meetings/:id/join", () => {
       assert.equal(res.status, 200, "join stays possible so the user reaches consent");
       const body = await res.json();
       const claims = decodePayload(body.token);
-      assert.equal(claims.grants.canPublish, false, "probe error must not grant publish");
-      assert.equal(claims.grants.canPublishData, false);
+      assert.equal(claims.video.canPublish, false, "probe error must not grant publish");
+      assert.equal(claims.video.canPublishData, false);
     } finally {
       Recording.findOne = originalRecordingFindOne;
       process.env.RECORDING_PROVIDER = "disabled";

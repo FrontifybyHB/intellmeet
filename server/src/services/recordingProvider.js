@@ -1,7 +1,21 @@
 "use strict";
 
 const crypto = require("node:crypto");
+const { S3Client, HeadObjectCommand, GetObjectCommand } = require("@aws-sdk/client-s3");
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
 
+const {
+  EgressClient,
+  RoomServiceClient,
+  EgressStatus,
+  StartEgressRequest,
+  TemplateSource,
+  Output,
+  FileOutput,
+  EncodedFileType,
+  StorageConfig,
+  S3Upload,
+} = require("livekit-server-sdk");
 const { getEnv } = require("../config/env");
 const AppError = require("../utils/AppError");
 const { HTTP_STATUS } = require("../constants/httpStatus");
@@ -21,20 +35,17 @@ const logger = require("../config/logger");
 // - EgressClient.startEgress/stopEgress shape:
 //   https://docs.livekit.io/reference/server-sdk-js/classes/EgressClient.html
 //
-// COMPATIBILITY DECISION: livekit-server-sdk is NOT in this repo's
-// lockfile (installed: express 4.22.3, mongoose 8.24.5,
-// socket.io 4.8.4), and the repo is CommonJS while the v2 SDK is ESM.
-// The SDK is therefore NOT added here — no blind upgrades. All
-// provider I/O goes through this module:
+// The backend is CommonJS; livekit-server-sdk 2.19.1 exposes a CommonJS
+// export boundary, so the SDK stays isolated here and never leaks into
+// controllers or the browser bundle. All provider I/O goes through this module:
 // - RECORDING_PROVIDER=disabled (default): fail closed with 503
 //   INTEGRATION_BLOCKER. Missing Egress/storage credentials are
 //   explicit integration blockers.
 // - RECORDING_PROVIDER=mock: deterministic in-process Egress +
 //   storage twins implementing the same state machine. Mocks are
 //   labeled in code/tests and NEVER presented as real Egress checks.
-// - RECORDING_PROVIDER=live: reserved. Wiring the real SDK + Twirp
-//   calls touches ONLY this file (StartEgress request builder +
-//   DeleteRoom/StopEgress below); service logic stays unchanged.
+// - RECORDING_PROVIDER=live: uses the installed SDK and configured
+//   private S3-compatible output. Missing credentials fail closed.
 //
 // Recording format/source decision: ONE room-composite MP4 file to the
 // configured private bucket (no convenience second export). MP4 keeps
@@ -70,25 +81,86 @@ function mockEgressId() {
   return `EG_${crypto.randomBytes(8).toString("hex").toUpperCase()}`;
 }
 
-// --- Live-mode stubs (isolated) ----------------------------------------
-// Build the StartEgress-shaped request the real SDK would send. Kept as
-// data (no network) so reviewers can verify parity when wiring "live".
-function buildStartEgressRequest({ roomName, bucket, key, format }) {
+function liveClients() {
+  const env = getEnv();
+  if (!env.livekitUrl || !env.livekitApiKey || !env.livekitApiSecret) {
+    throw blocker("LiveKit recording is not configured.");
+  }
+  let host;
+  try {
+    host = new URL(env.livekitUrl).origin.replace(/^ws/, "http");
+  } catch {
+    throw blocker("LIVEKIT_URL must be a valid LiveKit websocket URL.");
+  }
   return {
-    method: "StartEgress",
-    roomName,
-    source: { case: "template", value: { layout: "speaker-dark", roomName } },
-    outputs: [
-      {
-        case: "file",
-        value: {
-          fileType: String(format || "mp4").toUpperCase(),
-          filepath: key,
-          output: { case: "s3", value: { bucket } },
-        },
-      },
-    ],
+    env,
+    egress: new EgressClient(host, env.livekitApiKey, env.livekitApiSecret),
+    room: new RoomServiceClient(host, env.livekitApiKey, env.livekitApiSecret),
   };
+}
+
+function buildStorage(env) {
+  if (!env.recordingStorageConfigured) {
+    throw blocker("Live recording storage is not configured.");
+  }
+  return new StorageConfig({
+    provider: {
+      case: "s3",
+      value: new S3Upload({
+        accessKey: env.recordingStorageAccessKey,
+        secret: env.recordingStorageSecret,
+        bucket: env.recordingOutputBucket,
+        region: env.recordingStorageRegion,
+        endpoint: env.recordingStorageEndpoint,
+        forcePathStyle: env.recordingStorageForcePathStyle,
+      }),
+    },
+  });
+}
+
+function buildS3Client(env) {
+  if (!env.recordingStorageConfigured) {
+    throw blocker("Private recording storage is not configured.");
+  }
+  return new S3Client({
+    region: env.recordingStorageRegion,
+    endpoint: env.recordingStorageEndpoint,
+    forcePathStyle: env.recordingStorageForcePathStyle,
+    credentials: {
+      accessKeyId: env.recordingStorageAccessKey,
+      secretAccessKey: env.recordingStorageSecret,
+    },
+  });
+}
+
+function buildStartEgressRequest({ roomName, bucket, key, format }) {
+  const env = getEnv();
+  if (bucket !== env.recordingOutputBucket) {
+    throw blocker("Recording output bucket does not match server configuration.");
+  }
+  return new StartEgressRequest({
+    roomName,
+    source: { case: "template", value: new TemplateSource({ layout: "speaker-dark" }) },
+    outputs: [new Output({
+      config: {
+        case: "file",
+        value: new FileOutput({
+          fileType: String(format || "mp4").toLowerCase() === "mp4"
+            ? EncodedFileType.MP4
+            : String(format).toLowerCase() === "mp3"
+              ? EncodedFileType.MP3
+              : EncodedFileType.OGG,
+          filepath: key,
+          disableManifest: true,
+        }),
+      },
+    })],
+    storage: buildStorage(env),
+  });
+}
+
+function providerStatusName(status) {
+  return typeof status === "number" ? EgressStatus[status] : String(status);
 }
 
 function requireLiveCredentials() {
@@ -97,19 +169,14 @@ function requireLiveCredentials() {
     !env.livekitUrl ||
     !env.livekitApiKey ||
     !env.livekitApiSecret ||
-    !env.recordingOutputBucket
+    !env.recordingStorageConfigured
   ) {
     throw blocker(
       "Live Egress/storage is not configured. Set LIVEKIT_URL, LIVEKIT_API_KEY, " +
-        "LIVEKIT_API_SECRET and RECORDING_OUTPUT_BUCKET, and install livekit-server-sdk."
+        "LIVEKIT_API_SECRET and complete private B2 storage configuration."
     );
   }
-  // The SDK itself is still unwired (see module header): report the
-  // exact blocker instead of pretending integration passed.
-  throw blocker(
-    "Live provider requires livekit-server-sdk (StartEgress/DeleteRoom). " +
-      "It is not installed; wire it in services/recordingProvider.js only."
-  );
+  return true;
 }
 
 // --- Public provider API ------------------------------------------------
@@ -142,7 +209,9 @@ async function startRoomCompositeEgress({ roomName, bucket, key, format }) {
     return { egressId, status: "EGRESS_STARTING" };
   }
   requireLiveCredentials();
-  return buildStartEgressRequest({ roomName, bucket, key, format });
+  const { egress } = liveClients();
+  const info = await egress.startEgress(buildStartEgressRequest({ roomName, bucket, key, format }));
+  return { egressId: info.egressId, status: info.status, roomName: info.roomName };
 }
 
 async function stopEgress({ egressId }) {
@@ -163,7 +232,9 @@ async function stopEgress({ egressId }) {
     return { ok: true, alreadyStopped: false };
   }
   requireLiveCredentials();
-  return { ok: true };
+  const { egress } = liveClients();
+  const info = await egress.stopEgress(egressId);
+  return { ok: true, status: info.status };
 }
 
 async function deleteLivekitRoom({ roomName }) {
@@ -182,6 +253,8 @@ async function deleteLivekitRoom({ roomName }) {
     return { ok: false, skipped: true, errorCode: "INTEGRATION_BLOCKER" };
   }
   requireLiveCredentials();
+  const { room } = liveClients();
+  await room.deleteRoom(roomName);
   return { ok: true };
 }
 
@@ -198,12 +271,15 @@ async function getEgressStatus({ egressId }) {
     return { status: record.status, egressId, roomName: record.roomName };
   }
   requireLiveCredentials();
-  return null;
+  const { egress } = liveClients();
+  const items = await egress.listEgress({ egressId });
+  const info = items.find((item) => item.egressId === egressId);
+  return info ? { status: providerStatusName(info.status), egressId: info.egressId, roomName: info.roomName } : null;
 }
 
 // Private-output existence check through the configured storage API.
 // Never fetches a webhook/client URL; only bucket/key under config.
-async function verifyStoredOutput({ bucket, key }) {
+async function verifyStoredOutput({ bucket, key, providerEgressId }) {
   const mode = getEnv().recordingProvider;
   if (mode === "mock") {
     const stored = mockStorage.get(`${bucket}/${key}`);
@@ -213,7 +289,66 @@ async function verifyStoredOutput({ bucket, key }) {
     return { sizeBytes: stored.sizeBytes, durationMs: stored.durationMs };
   }
   requireLiveCredentials();
-  return null;
+  const env = getEnv();
+  let head;
+  try {
+    head = await buildS3Client(env).send(new HeadObjectCommand({ Bucket: bucket, Key: key }));
+  } catch (err) {
+    const safe = new Error("Private recording output could not be verified.");
+    safe.code = err && (err.name === "NotFound" || err.$metadata?.httpStatusCode === 404)
+      ? "OUTPUT_MISSING"
+      : "STORAGE_VERIFY_FAILED";
+    throw safe;
+  }
+  if (!Number.isFinite(Number(head.ContentLength)) || Number(head.ContentLength) <= 0) {
+    return null;
+  }
+  let durationMs = null;
+  const { egress } = liveClients();
+  const items = await egress.listEgress(providerEgressId ? { egressId: providerEgressId } : {});
+  for (const info of items) {
+    const result = (info.fileResults || []).find((file) => {
+      const location = String(file.location || "");
+      const filename = String(file.filename || "");
+      return filename === key || location.endsWith(`/${key}`) || location.endsWith(key);
+    });
+    if (result && Number(result.duration) >= 0) {
+      durationMs = Number(result.duration) / 1e6;
+      break;
+    }
+  }
+  return { sizeBytes: Number(head.ContentLength), durationMs };
+}
+
+async function getPrivateObjectUrl({ bucket, key }) {
+  const env = getEnv();
+  const command = new GetObjectCommand({ Bucket: bucket, Key: key });
+  return getSignedUrl(buildS3Client(env), command, {
+    expiresIn: env.recordingAccessLinkTtlSeconds,
+  });
+}
+
+async function readStoredObject({ bucket, key, maxBytes }) {
+  const env = getEnv();
+  const limit = Number.isInteger(maxBytes) && maxBytes > 0 ? maxBytes : env.transcriptMaxAudioBytes;
+  const response = await buildS3Client(env).send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  if (Number.isFinite(Number(response.ContentLength)) && Number(response.ContentLength) > limit) {
+    const error = new Error("Stored recording exceeds the configured read limit.");
+    error.code = "AUDIO_TOO_LARGE";
+    throw error;
+  }
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of response.Body) {
+    total += chunk.length;
+    if (total > limit) {
+      const error = new Error("Stored recording exceeds the configured read limit.");
+      error.code = "AUDIO_TOO_LARGE";
+      throw error;
+    }
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks, total);
 }
 
 function mockPutTestObject({ bucket, key, sizeBytes, durationMs }) {
@@ -254,6 +389,8 @@ module.exports = {
   deleteLivekitRoom,
   getEgressStatus,
   verifyStoredOutput,
+  getPrivateObjectUrl,
+  readStoredObject,
   buildStartEgressRequest,
   mockResetForTests,
   mockPutTestObject,

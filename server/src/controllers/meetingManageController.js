@@ -9,6 +9,8 @@ const Meeting = require("../models/Meeting");
 const MeetingParticipant = require("../models/MeetingParticipant");
 const User = require("../models/User");
 const { newJoinCode, joinUrlFor } = require("../services/meetingShareService");
+const { publishToMeeting } = require("../sockets/realtime");
+const { roomNameFor } = require("../services/meetingJoinService");
 
 function noStore(res) {
   res.setHeader("Cache-Control", "no-store");
@@ -92,11 +94,40 @@ const admitMemberHandler = asyncHandler(async (req, res) => {
   }
   await MeetingParticipant.findOneAndUpdate(
     { meetingId: meeting._id, userId: user._id },
-    { $set: { status: "admitted" } },
+    { $set: { status: "admitted" }, $setOnInsert: { canRecord: false } },
     { upsert: true }
   ).lean();
   noStore(res);
   res.status(HTTP_STATUS.OK).json({ meetingId: String(meeting._id), userId: String(user._id), status: "admitted" });
 });
 
-module.exports = { createMeetingHandler, admitMemberHandler };
+const setRecordingPermissionHandler = asyncHandler(async (req, res) => {
+  const { id, userId } = req.params;
+  if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(userId)) {
+    throw new AppError(HTTP_STATUS.BAD_REQUEST, "Invalid meeting or user id.", "VALIDATION_ERROR");
+  }
+  const meeting = await Meeting.findById(id, { hostId: 1, status: 1 }).lean();
+  if (!meeting) throw new AppError(HTTP_STATUS.NOT_FOUND, "Meeting not found.", "MEETING_NOT_FOUND");
+  if (String(meeting.hostId) !== String(req.user.id)) {
+    throw new AppError(HTTP_STATUS.FORBIDDEN, "Only the meeting owner can change recording permission.", "NOT_HOST");
+  }
+  if (meeting.status === "ended" || meeting.status === "cancelled") {
+    throw new AppError(HTTP_STATUS.CONFLICT, "Meeting is closed.", "MEETING_ENDED");
+  }
+  if (typeof req.body?.canRecord !== "boolean") {
+    throw new AppError(HTTP_STATUS.BAD_REQUEST, "canRecord must be boolean.", "VALIDATION_ERROR");
+  }
+  const member = await MeetingParticipant.findOneAndUpdate(
+    { meetingId: meeting._id, userId, status: "admitted" },
+    { $set: { canRecord: req.body.canRecord } },
+    { new: true, projection: { userId: 1, canRecord: 1 } },
+  ).lean();
+  if (!member) throw new AppError(HTTP_STATUS.NOT_FOUND, "Admitted participant not found.", "MEMBER_NOT_FOUND");
+  publishToMeeting(roomNameFor(meeting._id), "participant:permissions", {
+    meetingId: String(meeting._id), userId: String(member.userId), canRecord: member.canRecord,
+  });
+  noStore(res);
+  res.status(HTTP_STATUS.OK).json({ meetingId: String(meeting._id), userId: String(member.userId), canRecord: member.canRecord });
+});
+
+module.exports = { createMeetingHandler, admitMemberHandler, setRecordingPermissionHandler };

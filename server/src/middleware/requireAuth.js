@@ -87,6 +87,7 @@ async function requireAuth(req, _res, next) {
   try {
     const User = require("../models/User");
     const user = await User.findById(userId, {
+      name: 1,
       status: 1,
       role: 1,
       authVersion: 1,
@@ -101,6 +102,7 @@ async function requireAuth(req, _res, next) {
     }
     req.user = {
       id: String(userId),
+      name: typeof user.name === "string" ? user.name : null,
       role: user.role || "user",
       ver: user.authVersion || 0,
       jti: typeof payload.jti === "string" ? payload.jti : null,

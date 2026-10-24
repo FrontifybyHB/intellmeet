@@ -73,7 +73,7 @@ const INTELLIGENCE_TRANSITIONS = {
 // changes. A run only publishes output produced under its own versions.
 const INTELLIGENCE_VERSIONS = {
   PIPELINE: "i1",
-  PROMPT: "p1",
+  PROMPT: "p2",
   SCHEMA: "s2",
   CONTEXT: "c1",
 };

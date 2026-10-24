@@ -10,7 +10,7 @@ const Recording = require("../models/Recording");
 const TranscriptSegment = require("../models/TranscriptSegment");
 const provider = require("./geminiTranscriptionProvider");
 const audio = require("./transcriptionAudio");
-const { readMockAudioBytesForTests } = require("./recordingProvider");
+const { readMockAudioBytesForTests, readStoredObject } = require("./recordingProvider");
 const {
   checkTranscriptionEligibility,
   transitionTranscription,
@@ -320,10 +320,16 @@ async function processTranscriptionJob(job, { workerId } = {}) {
         await fail("OUTPUT_MISSING");
       }
     } else if (env.transcriptionProvider === "live") {
-      // No object-storage SDK is installed in this repo: the live byte
-      // path is an explicit integration blocker, never a guessed fetch.
-      await refresh();
-      await block("INTEGRATION_BLOCKER");
+      try {
+        bytes = await readStoredObject({
+          bucket,
+          key,
+          maxBytes: env.transcriptMaxAudioBytes,
+        });
+      } catch (err) {
+        await refresh();
+        await fail(safeTranscriptionErrorCode(err && err.code));
+      }
     } else {
       await refresh();
       await block("INTEGRATION_BLOCKER");
@@ -337,9 +343,15 @@ async function processTranscriptionJob(job, { workerId } = {}) {
       await fail("AUDIO_TOO_LARGE");
     }
     const mime = audio.mimeForFormat(format);
-    if (!audio.isDirectlySupportedMime(mime)) {
-      // Container needs an extractor that is not installed: explicit
-      // block, never fabricated audio.
+    if (String(format).toLowerCase() === "mp4") {
+      try {
+        bytes = await audio.extractMp4Audio(bytes, env.transcriptMaxAudioBytes);
+      } catch (err) {
+        await refresh();
+        if (err && err.code === "EXTRACTION_UNAVAILABLE") await block(err.code);
+        await fail(safeTranscriptionErrorCode(err && err.code));
+      }
+    } else if (!audio.isDirectlySupportedMime(mime)) {
       await refresh();
       await block("EXTRACTION_UNAVAILABLE");
     }

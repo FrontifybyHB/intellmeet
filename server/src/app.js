@@ -15,7 +15,7 @@ const devLabRoutes = require("./routes/devLab");
 const authRoutes = require("./routes/auth");
 
 const app = express();
-const { clientUrl } = getEnv();
+const { clientUrl, nodeEnv } = getEnv();
 
 // Non-browser requests carry no Origin and always pass. Browser requests
 // must match CLIENT_URL; anything else fails closed with a safe 403
@@ -76,8 +76,11 @@ app.use("/api/auth", authRoutes);
 // Provider webhooks verify by signature over raw bytes (route-scoped
 // raw parser inside the router) — never user JWT/CSRF auth.
 app.use("/api/webhooks", webhooksRoutes);
-// Protected contract lab: real auth, no bypass, not production UI.
-app.use("/dev", devLabRoutes);
+// The contract lab is useful in development/test, but must not exist on the
+// production route surface even behind authentication.
+if (nodeEnv !== "production") {
+  app.use("/dev", devLabRoutes);
+}
 
 app.use(notFound);
 app.use(errorHandler);

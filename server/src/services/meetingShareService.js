@@ -166,9 +166,9 @@ async function resolveLink({ code, userId }) {
     throw new AppError(HTTP_STATUS.NOT_FOUND, "Invite link is invalid.", "INVALID_CODE");
   }
   let membership = "none";
-  if (String(meeting.hostId) === String(userId)) {
+  if (userId && String(meeting.hostId) === String(userId)) {
     membership = "host";
-  } else {
+  } else if (userId) {
     const row = await MeetingParticipant.findOne(
       { meetingId: meeting._id, userId },
       { status: 1 }

@@ -51,3 +51,6 @@ out/
 *.pem
 *.key
 .env.production
+
+*docs
+graphify-out

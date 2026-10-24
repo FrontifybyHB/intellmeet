@@ -218,6 +218,7 @@ describe("phase 2 meeting chat", () => {
       assert.equal(ack.duplicate, false);
       assert.equal(ack.message.text, "hello from a");
       assert.equal(ack.message.senderId, users.a.id.toString());
+      assert.equal(ack.message.senderName, "test user");
       const live = await received;
       assert.equal(live.id, ack.message.id);
       assert.equal(live.text, "hello from a");

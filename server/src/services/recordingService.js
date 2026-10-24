@@ -118,16 +118,22 @@ function emitStatus(meetingIdParam, recording) {
   }
 }
 
-async function requireHost({ meetingIdParam, userId }) {
+async function requireRecorder({ meetingIdParam, userId }) {
   const { meetingId, isHost } = await authorizeMeetingAccess({
     meetingIdParam,
     userId,
   });
   if (!isHost) {
+    const MeetingParticipant = require("../models/MeetingParticipant");
+    const member = await MeetingParticipant.findOne(
+      { meetingId, userId, status: "admitted", canRecord: true },
+      { _id: 1 },
+    ).lean();
+    if (member) return meetingId;
     throw new AppError(
       HTTP_STATUS.FORBIDDEN,
-      "Only the host can perform this action.",
-      "NOT_HOST"
+      "Recording permission is required.",
+      "RECORDING_NOT_ALLOWED",
     );
   }
   return meetingId;
@@ -164,7 +170,7 @@ async function findNonterminalAttempt(meetingId, sessionId) {
 // partial unique (meetingId, sessionId) index, so the loser reads the
 // winner instead of creating a second provider session.
 async function startRecording({ meetingIdParam, userId }) {
-  const meetingId = await requireHost({ meetingIdParam, userId });
+  const meetingId = await requireRecorder({ meetingIdParam, userId });
   const sessionId = roomNameFor(meetingId);
   const env = getEnv();
 
@@ -392,7 +398,7 @@ async function startRecording({ meetingIdParam, userId }) {
 // Idempotent: stopping an already-terminal attempt returns it (a
 // stopped attempt can never be resurrected by a delayed callback).
 async function stopRecording({ meetingIdParam, recordingIdParam, userId }) {
-  const meetingId = await requireHost({ meetingIdParam, userId });
+  const meetingId = await requireRecorder({ meetingIdParam, userId });
   const doc = await findScopedRecording({ meetingId, recordingIdParam });
 
   if (
@@ -637,9 +643,25 @@ async function finalizeVerifiedOutput(doc) {
   }
   let meta = null;
   try {
-    meta = await provider.verifyStoredOutput({ bucket, key });
-  } catch (_unused) {
-    meta = null;
+    meta = await provider.verifyStoredOutput({
+      bucket,
+      key,
+      providerEgressId: doc.providerEgressId,
+    });
+  } catch (err) {
+    const errorCode = err && err.code === "OUTPUT_MISSING"
+      ? "OUTPUT_MISSING"
+      : "STORAGE_VERIFY_FAILED";
+    const failed = await transitionAttempt(
+      doc._id,
+      doc.version,
+      RECORDING_STATES.VERIFYING,
+      RECORDING_STATES.FAILED,
+      { errorCode }
+    );
+    return serializeRecording(
+      failed || (await Recording.findById(doc._id, LIST_PROJECTION).lean())
+    );
   }
   if (!meta) {
     const failed = await transitionAttempt(
@@ -772,37 +794,42 @@ async function accessLink({ meetingIdParam, recordingIdParam, userId }) {
     );
   }
   const env = getEnv();
-  if (!env.recordingStorageBaseUrl) {
+  if (!env.recordingStorageConfigured) {
     throw new AppError(
       HTTP_STATUS.SERVICE_UNAVAILABLE,
       "Recording access is not configured.",
       "INTEGRATION_BLOCKER"
     );
   }
-  if (!env.jwtSecret) {
+  if (
+    !validateStorageLocator(
+      doc.storage && doc.storage.bucket,
+      doc.storage && doc.storage.key,
+      env.recordingKeyPrefix
+    )
+  ) {
     throw new AppError(
-      HTTP_STATUS.INTERNAL_SERVER_ERROR,
-      "Authentication is not configured.",
-      "DB_ERROR"
+      HTTP_STATUS.CONFLICT,
+      "Recording output is unavailable.",
+      "OUTPUT_INVALID"
     );
   }
-  const crypto = require("node:crypto");
   const exp = Math.floor(Date.now() / 1000) + env.recordingAccessLinkTtlSeconds;
-  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
-  const payload = Buffer.from(
-    JSON.stringify({
-      sub: String(userId),
-      meeting: String(meetingId),
-      recording: String(doc._id),
-      exp,
-    })
-  ).toString("base64url");
-  const sig = crypto
-    .createHmac("sha256", env.jwtSecret)
-    .update(`${header}.${payload}`)
-    .digest("base64url");
+  let url;
+  try {
+    url = await provider.getPrivateObjectUrl({
+      bucket: doc.storage.bucket,
+      key: doc.storage.key,
+    });
+  } catch (_unused) {
+    throw new AppError(
+      HTTP_STATUS.SERVICE_UNAVAILABLE,
+      "Recording access is temporarily unavailable.",
+      "STORAGE_UNAVAILABLE"
+    );
+  }
   return {
-    url: `${env.recordingStorageBaseUrl.replace(/\/$/, "")}/${doc.storage.key}?token=${header}.${payload}.${sig}`,
+    url,
     expiresAt: new Date(exp * 1000).toISOString(),
   };
 }

@@ -20,6 +20,12 @@ const chatMessageSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    senderName: {
+      type: String,
+      trim: true,
+      maxlength: 100,
+      default: "Participant",
+    },
     clientMessageId: {
       type: String,
       required: true,

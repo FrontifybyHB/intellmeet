@@ -16,6 +16,7 @@ const SHUTDOWN_GRACE_MS = 5000;
 let server = null;
 let sockets = null;
 let shuttingDown = false;
+let recordingRecoveryScheduler = null;
 
 async function startServer() {
   await connectDB();
@@ -24,6 +25,14 @@ async function startServer() {
   // to this listener instead of opening its own port.
   server = http.createServer(app);
   sockets = attachMeetingSockets(server);
+  // Recording has no BullMQ worker. Lease-claimed recovery runs with the
+  // API so partial provider outcomes recover even if AI is disabled.
+  const { startRecoveryScheduler } = require("./queues/recoveryScheduler");
+  const { recoverStuck } = require("./services/recordingRecovery");
+  recordingRecoveryScheduler = startRecoveryScheduler({
+    name: "recording",
+    recover: () => recoverStuck({}),
+  });
 
   await new Promise((resolve) => {
     server.listen(port, resolve);
@@ -41,6 +50,10 @@ async function stopServer() {
     setTimeout(resolve, SHUTDOWN_GRACE_MS);
   });
   try {
+    if (recordingRecoveryScheduler) {
+      recordingRecoveryScheduler.stop();
+      recordingRecoveryScheduler = null;
+    }
     // Disconnect sockets first so clients fail over to history catch-up,
     // then stop accepting HTTP. No timers/listeners leak: the socket
     // module holds no per-connection intervals.

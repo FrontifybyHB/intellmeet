@@ -13,7 +13,7 @@ const VALID_NODE_ENVS = new Set(["development", "test", "production"]);
 
 function parsePort(raw) {
   if (raw === undefined || raw === null || raw === "") {
-    return 5000;
+    return 3000;
   }
   const port = Number(raw);
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -68,6 +68,67 @@ function parseOptionalString(raw) {
   return raw;
 }
 
+function parseRecordingStorage(envSource) {
+  const b2 = [
+    envSource.B2_ACCESS_KEY_ID,
+    envSource.B2_SECRET_ACCESS_KEY,
+    envSource.B2_BUCKET_NAME,
+    envSource.B2_REGION,
+    envSource.B2_ENDPOINT,
+  ].map(parseOptionalString);
+  const legacy = [
+    envSource.RECORDING_STORAGE_ACCESS_KEY,
+    envSource.RECORDING_STORAGE_SECRET,
+    envSource.RECORDING_OUTPUT_BUCKET,
+    envSource.RECORDING_STORAGE_REGION,
+    envSource.RECORDING_STORAGE_ENDPOINT,
+  ].map(parseOptionalString);
+  const b2Count = b2.filter(Boolean).length;
+  const legacyCount = legacy.filter(Boolean).length;
+  if (b2Count > 0 && b2Count < b2.length) {
+    throw new Error("B2 recording storage configuration must be complete.");
+  }
+  if (b2Count > 0 && legacyCount > 0) {
+    throw new Error("B2 and legacy recording storage configuration cannot be mixed.");
+  }
+  if (b2Count === 0 && legacyCount > 0 && legacyCount < legacy.length) {
+    throw new Error("Legacy recording storage configuration must be complete.");
+  }
+  const values = b2Count === b2.length ? b2 : legacy;
+  const [accessKey, secret, bucket, region, endpoint] = values;
+  if (endpoint) {
+    let parsed;
+    try {
+      parsed = new URL(endpoint);
+    } catch (_unused) {
+      throw new Error("B2_ENDPOINT must be a valid HTTPS endpoint.");
+    }
+    if (
+      parsed.protocol !== "https:" ||
+      parsed.username ||
+      parsed.password ||
+      parsed.search ||
+      parsed.hash ||
+      (parsed.pathname !== "/" && parsed.pathname !== "") ||
+      !/^s3\.[a-z0-9-]+\.backblazeb2\.com$/i.test(parsed.hostname)
+    ) {
+      throw new Error("B2_ENDPOINT must be a trusted regional HTTPS B2 S3 endpoint.");
+    }
+    const endpointRegion = parsed.hostname.split(".")[1];
+    if (region && region !== endpointRegion) {
+      throw new Error("B2_REGION must match the regional B2 endpoint.");
+    }
+  }
+  return {
+    accessKey,
+    secret,
+    bucket,
+    region,
+    endpoint,
+    configured: Boolean(accessKey && secret && bucket && region && endpoint),
+  };
+}
+
 function parseLivekitTtl(raw) {
   if (raw === undefined || raw === null || raw === "") {
     return 600;
@@ -117,6 +178,14 @@ function parseNoticeVersion(raw) {
     );
   }
   return raw;
+}
+
+function parseRecordingOutputFormat(raw) {
+  const value = String(raw || RECORDING_LIMITS.OUTPUT_FORMAT_DEFAULT).toLowerCase();
+  if (!new Set(["mp4", "ogg", "mp3"]).has(value)) {
+    throw new Error("RECORDING_OUTPUT_FORMAT must be mp4, ogg or mp3.");
+  }
+  return value;
 }
 
 // Cookie topology mode. Default "lax" is correct for same-site
@@ -187,13 +256,19 @@ function parseGeminiModel(raw) {
 function loadEnv(source) {
   const envSource = source || process.env;
   const nodeEnv = parseNodeEnv(envSource.NODE_ENV);
+  const clientUrl = parseClientUrl(envSource.CLIENT_URL, nodeEnv);
+  const storage = parseRecordingStorage(envSource);
+  const jwtSecret = parseOptionalString(envSource.JWT_SECRET);
+  if (nodeEnv === "production" && !jwtSecret) {
+    throw new Error("JWT_SECRET is required in production.");
+  }
   return {
     nodeEnv,
     port: parsePort(envSource.PORT),
-    clientUrl: parseClientUrl(envSource.CLIENT_URL, nodeEnv),
+    clientUrl,
     cookieSameSite: parseCookieSameSite(envSource.COOKIE_SAMESITE, nodeEnv),
     mongoUri: parseMongoUri(envSource.MONGODB_URI),
-    jwtSecret: parseOptionalString(envSource.JWT_SECRET),
+    jwtSecret,
     livekitUrl: parseOptionalString(envSource.LIVEKIT_URL),
     livekitApiKey: parseOptionalString(envSource.LIVEKIT_API_KEY),
     livekitApiSecret: parseOptionalString(envSource.LIVEKIT_API_SECRET),
@@ -290,9 +365,14 @@ function loadEnv(source) {
     recordingWebhookSecret: parseOptionalString(
       envSource.LIVEKIT_WEBHOOK_SECRET
     ),
-    recordingOutputBucket: parseOptionalString(envSource.RECORDING_OUTPUT_BUCKET),
-    recordingOutputFormat: parseOptionalString(envSource.RECORDING_OUTPUT_FORMAT) ||
-      RECORDING_LIMITS.OUTPUT_FORMAT_DEFAULT,
+    recordingOutputBucket: storage.bucket,
+    recordingStorageAccessKey: storage.accessKey,
+    recordingStorageSecret: storage.secret,
+    recordingStorageRegion: storage.region,
+    recordingStorageEndpoint: storage.endpoint,
+    recordingStorageConfigured: storage.configured,
+    recordingStorageForcePathStyle: envSource.RECORDING_STORAGE_FORCE_PATH_STYLE === "true",
+    recordingOutputFormat: parseRecordingOutputFormat(envSource.RECORDING_OUTPUT_FORMAT),
     recordingKeyPrefix: parseOptionalString(envSource.RECORDING_KEY_PREFIX) ||
       RECORDING_LIMITS.STORAGE_KEY_PREFIX_DEFAULT,
     recordingStorageBaseUrl: parseOptionalString(
@@ -572,7 +652,7 @@ function getSafeEnvSummary(env) {
       resolved.livekitUrl && resolved.livekitApiKey && resolved.livekitApiSecret
     ),
     recordingProvider: resolved.recordingProvider,
-    recordingStorageConfigured: Boolean(resolved.recordingOutputBucket),
+    recordingStorageConfigured: Boolean(resolved.recordingStorageConfigured),
     transcriptionProvider: resolved.transcriptionProvider,
     intelligenceProvider: resolved.intelligenceProvider,
     geminiConfigured: Boolean(resolved.geminiApiKey),
