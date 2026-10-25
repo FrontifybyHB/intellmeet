@@ -35,6 +35,7 @@ async function readError(res: Response): Promise<ApiError> {
   let body: unknown;
   try {
     const parsed = (await res.json()) as {
+      status?: number;
       error?: { code?: string; message?: string };
     };
     body = parsed;

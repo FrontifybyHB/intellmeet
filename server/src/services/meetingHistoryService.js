@@ -168,22 +168,24 @@ async function getMeetingDetail({ meetingIdParam, userId }) {
   // Share link reuse: link-mode meetings expose the same stable
   // joinUrl minted at creation (lazily ensured for pre-code link-mode
   // rows); restricted/legacy meetings expose none.
-  let joinUrl = null;
-  try {
-    const { ensureJoinCode, joinUrlFor } = require("./meetingShareService");
-    const code = await ensureJoinCode(meeting);
-    if (code) {
-      joinUrl = joinUrlFor(code);
+  // These reads do not depend on one another. Starting them together removes
+  // one database round-trip from the detail screen's critical path.
+  const joinUrlPromise = (async () => {
+    try {
+      const { ensureJoinCode, joinUrlFor } = require("./meetingShareService");
+      const code = await ensureJoinCode(meeting);
+      return code ? joinUrlFor(code) : null;
+    } catch (_unused) {
+      return null;
     }
-  } catch (_unused) {
-    joinUrl = null;
-  }
-  const latestRecording = await Recording.findOne(
+  })();
+  const latestRecordingPromise = Recording.findOne(
     { meetingId: meeting._id },
     RECORDING_POINTER_PROJECTION
   )
     .sort({ createdAt: -1, _id: -1 })
     .lean();
+  const [joinUrl, latestRecording] = await Promise.all([joinUrlPromise, latestRecordingPromise]);
   let transcription = null;
   if (latestRecording && latestRecording.transcription && latestRecording.transcription.runId) {
     const tx = latestRecording.transcription;

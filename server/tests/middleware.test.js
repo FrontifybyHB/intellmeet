@@ -44,6 +44,7 @@ describe("middleware behavior", () => {
     const res = await request("/api/does-not-exist");
     assert.equal(res.status, 404);
     const body = await res.json();
+    assert.equal(body.status, 404);
     assert.equal(body.error.code, "NOT_FOUND");
     assert.equal(typeof body.error.message, "string");
     assert.ok(body.error.requestId, "404 body should carry requestId");
@@ -120,6 +121,7 @@ describe("middleware behavior", () => {
       };
       errorHandler(new Error("mongodb://secret-uri-leak"), req, res, () => {});
       assert.equal(status, 500);
+      assert.equal(payload.status, 500);
       assert.equal(payload.error.message, "Internal server error.");
       assert.ok(
         !JSON.stringify(payload).includes("secret-uri-leak"),
@@ -150,6 +152,7 @@ describe("middleware behavior", () => {
       };
       errorHandler(new Error("mongodb://unset-env-leak"), req, res, () => {});
       assert.equal(status, 500);
+      assert.equal(payload.status, 500);
       assert.equal(payload.error.message, "Internal server error.");
       assert.ok(
         !JSON.stringify(payload).includes("unset-env-leak"),
@@ -188,6 +191,7 @@ describe("middleware behavior", () => {
     assert.equal(denied.status, 403);
     const body = await denied.json();
     assert.equal(body.error.code, "FORBIDDEN");
+    assert.equal(body.status, 403);
     assert.equal(body.error.message, "Origin not allowed.");
     assert.ok(body.error.requestId, "403 body should carry requestId");
 
@@ -212,6 +216,7 @@ describe("middleware behavior", () => {
     assert.equal(res.status, 413);
     const body = JSON.parse(text);
     assert.equal(body.error.code, "PAYLOAD_TOO_LARGE");
+    assert.equal(body.status, 413);
     assert.ok(body.error.requestId, "413 body should carry requestId");
     assert.ok(
       !text.includes("a".repeat(1000)),
@@ -229,6 +234,7 @@ describe("middleware behavior", () => {
     assert.equal(res.status, 413);
     const body = await res.json();
     assert.equal(body.error.code, "PAYLOAD_TOO_LARGE");
+    assert.equal(body.status, 413);
     assert.ok(body.error.requestId, "413 body should carry requestId");
   });
 
@@ -241,6 +247,7 @@ describe("middleware behavior", () => {
     assert.equal(res.status, 400);
     const body = await res.json();
     assert.equal(body.error.code, "INVALID_BODY");
+    assert.equal(body.status, 400);
     assert.ok(body.error.requestId, "400 body should carry requestId");
   });
 });

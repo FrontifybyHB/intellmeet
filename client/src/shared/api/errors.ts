@@ -1,6 +1,6 @@
 // Error conventions shared by every API caller.
 //
-// The server answers with `{ error: { code, message } }`. The transport
+// The server answers with `{ status, error: { code, message } }`. The transport
 // turns that into an ApiError so features can branch on `status`/`code`
 // without re-parsing response bodies, and use one shared helper for the
 // "code: message" string the UI shows.

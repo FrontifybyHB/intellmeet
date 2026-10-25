@@ -48,7 +48,11 @@ function parseClientUrl(raw, nodeEnv) {
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new Error("CLIENT_URL must be a valid http(s) URL.");
   }
-  return raw;
+  // Browser Origin values are always scheme + host + optional port.  Keeping
+  // a deployment value such as "https://app.example.com/" verbatim makes a
+  // legitimate browser request fail the strict CORS comparison in production.
+  // Canonicalize it once so the allowlist and the browser use the same value.
+  return url.origin;
 }
 
 function parseMongoUri(raw) {

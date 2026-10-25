@@ -38,6 +38,11 @@ describe("config/env validation", () => {
     }
   });
 
+  it("canonicalizes CLIENT_URL to the browser Origin used by CORS", () => {
+    const env = loadEnv({ ...VALID, CLIENT_URL: "https://app.example.com/with-a-path?x=1" });
+    assert.equal(env.clientUrl, "https://app.example.com");
+  });
+
   it("requires CLIENT_URL in production", () => {
     const { CLIENT_URL, ...rest } = VALID;
     assert.throws(

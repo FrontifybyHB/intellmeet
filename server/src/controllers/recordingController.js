@@ -72,7 +72,9 @@ const startMeetingRecording = asyncHandler(async (req, res) => {
     if (err && err.recording) {
       recordingMetrics.observeReject(err.code);
       noStore(res);
-      res.status(err.statusCode || HTTP_STATUS.SERVICE_UNAVAILABLE).json({
+      const status = err.statusCode || HTTP_STATUS.SERVICE_UNAVAILABLE;
+      res.status(status).json({
+        status,
         recording: err.recording,
         error: {
           message: err.message,

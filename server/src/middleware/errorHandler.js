@@ -22,7 +22,7 @@ function safePath(req) {
 
 function errorHandler(err, req, res, _next) {
   const showDetail = process.env.NODE_ENV === "development";
-  const status =
+  let status =
     err && Number.isInteger(err.statusCode) && err.statusCode >= 400 && err.statusCode < 600
       ? err.statusCode
       : HTTP_STATUS.INTERNAL_SERVER_ERROR;
@@ -30,6 +30,20 @@ function errorHandler(err, req, res, _next) {
     err && typeof err.code === "string" && err.code.length > 0
       ? err.code
       : "INTERNAL_ERROR";
+  // Convert database-originated client mistakes to the same public contract
+  // as explicitly validated input. This prevents malformed data or a race on
+  // a unique index from becoming a misleading production 500.
+  if (err && err.code === 11000) {
+    status = HTTP_STATUS.CONFLICT;
+    code = "DUPLICATE_RESOURCE";
+  } else if (
+    err &&
+    (err.name === "ValidationError" || err.name === "CastError") &&
+    status === HTTP_STATUS.INTERNAL_SERVER_ERROR
+  ) {
+    status = HTTP_STATUS.BAD_REQUEST;
+    code = "VALIDATION_ERROR";
+  }
   if (code === "INTERNAL_ERROR" && err && err.type === "entity.too.large") {
     code = "PAYLOAD_TOO_LARGE";
   } else if (
@@ -39,10 +53,15 @@ function errorHandler(err, req, res, _next) {
   ) {
     code = "INVALID_BODY";
   }
-  const message =
+  let message =
     status === HTTP_STATUS.INTERNAL_SERVER_ERROR && !showDetail
       ? "Internal server error."
       : (err && err.message) || "Internal server error.";
+  if (err && err.code === 11000) {
+    message = "A resource with those values already exists.";
+  } else if (err && (err.name === "ValidationError" || err.name === "CastError")) {
+    message = "Invalid request data.";
+  }
 
   logger.error("request_error", {
     requestId: req && req.id ? req.id : undefined,
@@ -56,6 +75,7 @@ function errorHandler(err, req, res, _next) {
     return;
   }
   res.status(status).json({
+    status,
     error: {
       message,
       code,

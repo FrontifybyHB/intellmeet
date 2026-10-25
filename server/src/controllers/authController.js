@@ -124,7 +124,6 @@ function csrfBindingFor(req) {
 async function registerHandler(req, res, next) {
   try {
     const { name, email, password } = validateRegister(req.body);
-    validateNewPassword(password);
     const passwordHash = await hashPassword(password);
     let user;
     try {
