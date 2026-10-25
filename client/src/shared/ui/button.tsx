@@ -4,7 +4,6 @@ import { cn } from "@/shared/lib/utils";
 import { buttonVariants } from "@/shared/ui/button-variants";
 import { Slot } from "radix-ui";
 
-
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>, VariantProps<typeof buttonVariants> {
   asChild?: boolean;

@@ -1,5 +1,6 @@
 const cors = require("cors");
 const express = require("express");
+const helmet = require("helmet");
 
 const { getEnv } = require("./config/env");
 const AppError = require("./utils/AppError");
@@ -29,6 +30,7 @@ function corsOrigin(origin, callback) {
 }
 
 app.use(requestId);
+app.use(helmet());
 app.use(securityHeaders);
 app.use(cors(clientUrl ? { origin: corsOrigin, credentials: true } : undefined));
 // Minimal cookie reader (no new dependency): parses Cookie header

@@ -100,9 +100,7 @@ describe("AppRoutes", () => {
 
     renderApp(ROUTES.authenticatedHome);
 
-    expect(
-      await screen.findByRole("heading", { name: /overview/i }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /overview/i })).toBeInTheDocument();
     expect(screen.getByTestId("route-shell-title")).toHaveTextContent("Overview");
     expect(screen.getByRole("navigation", { name: /breadcrumb/i })).toHaveTextContent(
       "Workspace / Overview",
@@ -114,9 +112,7 @@ describe("AppRoutes", () => {
 
     renderApp(ROUTES.login);
 
-    expect(
-      await screen.findByRole("heading", { name: /overview/i }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /overview/i })).toBeInTheDocument();
   });
 
   it("renders the public landing without session or API data", () => {
@@ -128,7 +124,9 @@ describe("AppRoutes", () => {
     expect(
       screen.getByRole("heading", { name: /from initial hello to team follow-through/i }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /from raw conversation to structured execution/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /from raw conversation to structured execution/i }),
+    ).toBeInTheDocument();
     expect(apiFetchMock).not.toHaveBeenCalled();
   });
 

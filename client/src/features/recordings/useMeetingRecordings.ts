@@ -15,10 +15,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ApiError, describeApiError } from "@/shared/api/errors";
-import {
-  connectMeetingSocket,
-  type RecordingStatusEvent,
-} from "@/shared/realtime/meetingSocket";
+import { connectMeetingSocket, type RecordingStatusEvent } from "@/shared/realtime/meetingSocket";
 import {
   fetchMeetingRecording,
   fetchRecordingConsent,
@@ -145,7 +142,7 @@ export function useMeetingRecordings({
     setLoading(true);
     (async () => {
       try {
-        const [, ] = await Promise.all([loadConsent(), refresh()]);
+        const [,] = await Promise.all([loadConsent(), refresh()]);
         if (!cancelled) setLoadError(null);
       } catch (err) {
         if (!cancelled) {
@@ -286,8 +283,7 @@ export function useMeetingRecordings({
           setNoticeChanged(true);
           setActionError({
             code: "NOTICE_VERSION_MISMATCH",
-            message:
-              "The recording notice changed. Review the current notice and decide again.",
+            message: "The recording notice changed. Review the current notice and decide again.",
             source: "consent",
           });
         } else {

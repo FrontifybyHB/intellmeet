@@ -68,9 +68,7 @@ export function MeetingLab({ initialMeetingId }: { initialMeetingId?: string }) 
       await room.connect(join.livekitUrl, join.token);
     } catch (err) {
       setDeviceError(
-        err instanceof Error
-          ? err.message
-          : "LiveKit connect failed (needs server + media perms).",
+        err instanceof Error ? err.message : "LiveKit connect failed (needs server + media perms).",
       );
       record("LIVEKIT", "room.connect", err);
     }
@@ -147,9 +145,8 @@ export function MeetingLab({ initialMeetingId }: { initialMeetingId?: string }) 
         <section data-testid="token-view">
           <p>Room: {join.roomName}</p>
           <p>
-            Host: {String(join.permissions.isHost)} · Record:{" "}
-            {String(join.permissions.canRecord)} · Share:{" "}
-            {String(join.permissions.canScreenShare)}
+            Host: {String(join.permissions.isHost)} · Record: {String(join.permissions.canRecord)} ·
+            Share: {String(join.permissions.canScreenShare)}
           </p>
           <p>Token: issued (expiry enforced server-side; secret never exposed)</p>
         </section>

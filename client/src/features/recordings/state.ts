@@ -133,12 +133,7 @@ export function isIntegrationBlocker(code: string | null): boolean {
  * offer it.
  */
 export function canStopRecording(state: RecordingState): boolean {
-  return (
-    state === "requested" ||
-    state === "starting" ||
-    state === "active" ||
-    state === "unknown"
-  );
+  return state === "requested" || state === "starting" || state === "active" || state === "unknown";
 }
 
 /**
@@ -150,10 +145,7 @@ export function canStopRecording(state: RecordingState): boolean {
  * kept even when a later event carries a higher version, because the server
  * guarantees terminal states never regress.
  */
-export function mergeRecording(
-  recordings: Recording[],
-  incoming: Recording,
-): Recording[] {
+export function mergeRecording(recordings: Recording[], incoming: Recording): Recording[] {
   const index = recordings.findIndex((row) => row.id === incoming.id);
   if (index === -1) {
     return [incoming, ...recordings];
@@ -174,10 +166,7 @@ export function mergeRecording(
  * Reconciles a list response without letting a slower HTTP read regress a
  * newer socket/action update already shown in the UI.
  */
-export function mergeRecordingList(
-  current: Recording[],
-  incoming: Recording[],
-): Recording[] {
+export function mergeRecordingList(current: Recording[], incoming: Recording[]): Recording[] {
   let merged: Recording[] = [];
   for (const recording of incoming) merged = mergeRecording(merged, recording);
   for (const recording of current) merged = mergeRecording(merged, recording);
@@ -205,9 +194,7 @@ export function formatDuration(durationMs: number | null): string | null {
   const totalSeconds = Math.round(durationMs / 1000);
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
-  return minutes > 0
-    ? `${minutes}m ${String(seconds).padStart(2, "0")}s`
-    : `${seconds}s`;
+  return minutes > 0 ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
 }
 
 /** Formats a byte count for display. */

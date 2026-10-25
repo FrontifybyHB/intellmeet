@@ -17,7 +17,11 @@
 import { API_ORIGIN } from "@/shared/config/env";
 import { refreshAuthForRealtime } from "@/shared/api/client";
 import type { Recording } from "@/features/recordings/api";
-import type { ActionItem, IntelligenceStatus, TranscriptionStatus } from "@/features/postMeeting/api";
+import type {
+  ActionItem,
+  IntelligenceStatus,
+  TranscriptionStatus,
+} from "@/features/postMeeting/api";
 
 export interface RecordingStatusEvent {
   meetingId: string;
@@ -49,9 +53,17 @@ export interface MeetingSocketHandlers {
   onRecordingStatus?: (payload: RecordingStatusEvent) => void;
   onRecordingReady?: (payload: RecordingReadyEvent) => void;
   onTranscriptionStatus?: (payload: TranscriptionStatusEvent) => void;
-  onTranscriptionReady?: (payload: { meetingId: string; recordingId: string; runVersion: number }) => void;
+  onTranscriptionReady?: (payload: {
+    meetingId: string;
+    recordingId: string;
+    runVersion: number;
+  }) => void;
   onIntelligenceStatus?: (payload: IntelligenceStatusEvent) => void;
-  onIntelligenceReady?: (payload: { meetingId: string; intelligenceId: string; runVersion: number }) => void;
+  onIntelligenceReady?: (payload: {
+    meetingId: string;
+    intelligenceId: string;
+    runVersion: number;
+  }) => void;
   onActionItemUpdated?: (payload: ActionItemUpdatedEvent) => void;
   onMeetingEnded?: (payload: { meetingId: string }) => void;
   onMeetingRevoked?: (payload: { meetingId: string; reason?: string }) => void;
@@ -177,47 +189,70 @@ export function connectMeetingSocket(
       joinTimer = window.setTimeout(() => {
         joinTimer = null;
         handlers.onDisconnected?.();
-        handlers.onError?.("Chat could not join the meeting. Check your connection and reload the page.");
+        handlers.onError?.(
+          "Chat could not join the meeting. Check your connection and reload the page.",
+        );
       }, 10000);
       created.emit(
         "meeting:join",
         { meetingId, ...(newestCursor ? { lastCursor: newestCursor } : {}) },
         (ack: unknown) => {
-        if (joinTimer !== null) window.clearTimeout(joinTimer);
-        joinTimer = null;
-        if (cancelled || !created.connected) return;
-        const response = ack as
-            | { ok?: boolean; code?: string; message?: string; error?: string; newestCursor?: string | null }
-          | undefined;
-        if (response?.ok !== true) {
-          handlers.onDisconnected?.();
-          if (response?.code === "UNAUTHORIZED" && retryAfterAuthRefresh(created)) return;
-          handlers.onError?.(
-            response?.message || "Live updates were refused by the server.",
-          );
-          return;
-        }
-        const send = (text: string) => new Promise<void>((resolve, reject) => {
-          const clientMessageId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-          const timeout = window.setTimeout(() => reject(new Error("Message delivery timed out. Check the chat history before retrying.")), 10000);
-          created.emit("chat:send", { meetingId, clientMessageId, text }, (result: unknown) => {
-            window.clearTimeout(timeout);
-            const response = result as { ok?: boolean; message?: ChatMessage | string; error?: string; code?: string } | undefined;
-            if (response?.ok && response.message && typeof response.message !== "string") {
-              handlers.onChatMessage?.(response.message);
-              resolve();
-            } else {
-              reject(new Error(typeof response?.message === "string" ? response.message : response?.error || response?.code || "Message was not sent."));
-            }
-          });
-        });
-        if (typeof response?.newestCursor === "string") {
-          newestCursor = response.newestCursor;
-        }
-        const history = response as { messages?: ChatMessage[] };
-        if (Array.isArray(history.messages)) handlers.onChatHistory?.(history.messages);
-        handlers.onChatReady?.(send);
-        handlers.onConnected?.();
+          if (joinTimer !== null) window.clearTimeout(joinTimer);
+          joinTimer = null;
+          if (cancelled || !created.connected) return;
+          const response = ack as
+            | {
+                ok?: boolean;
+                code?: string;
+                message?: string;
+                error?: string;
+                newestCursor?: string | null;
+              }
+            | undefined;
+          if (response?.ok !== true) {
+            handlers.onDisconnected?.();
+            if (response?.code === "UNAUTHORIZED" && retryAfterAuthRefresh(created)) return;
+            handlers.onError?.(response?.message || "Live updates were refused by the server.");
+            return;
+          }
+          const send = (text: string) =>
+            new Promise<void>((resolve, reject) => {
+              const clientMessageId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+              const timeout = window.setTimeout(
+                () =>
+                  reject(
+                    new Error(
+                      "Message delivery timed out. Check the chat history before retrying.",
+                    ),
+                  ),
+                10000,
+              );
+              created.emit("chat:send", { meetingId, clientMessageId, text }, (result: unknown) => {
+                window.clearTimeout(timeout);
+                const response = result as
+                  | { ok?: boolean; message?: ChatMessage | string; error?: string; code?: string }
+                  | undefined;
+                if (response?.ok && response.message && typeof response.message !== "string") {
+                  handlers.onChatMessage?.(response.message);
+                  resolve();
+                } else {
+                  reject(
+                    new Error(
+                      typeof response?.message === "string"
+                        ? response.message
+                        : response?.error || response?.code || "Message was not sent.",
+                    ),
+                  );
+                }
+              });
+            });
+          if (typeof response?.newestCursor === "string") {
+            newestCursor = response.newestCursor;
+          }
+          const history = response as { messages?: ChatMessage[] };
+          if (Array.isArray(history.messages)) handlers.onChatHistory?.(history.messages);
+          handlers.onChatReady?.(send);
+          handlers.onConnected?.();
         },
       );
     });
@@ -233,7 +268,9 @@ export function connectMeetingSocket(
       handlers.onError?.("Chat disconnected. Reconnecting…");
     });
 
-    created.on("auth:revoked", () => { authRevoked = true; });
+    created.on("auth:revoked", () => {
+      authRevoked = true;
+    });
 
     created.on("chat:message", (payload: unknown) => {
       const message = payload as ChatMessage | undefined;
@@ -246,8 +283,7 @@ export function connectMeetingSocket(
       handlers.onDisconnected?.();
       const authCode = (error as { data?: { code?: string } } | null)?.data?.code;
       if (authCode === "UNAUTHORIZED" && retryAfterAuthRefresh(created)) return;
-      const message =
-        error instanceof Error ? error.message : "Live updates could not connect.";
+      const message = error instanceof Error ? error.message : "Live updates could not connect.";
       handlers.onError?.(message);
     });
 
@@ -259,9 +295,19 @@ export function connectMeetingSocket(
     });
 
     created.on("participant:permissions", (payload: unknown) => {
-      const event = payload as { meetingId?: string; userId?: string; canRecord?: boolean } | undefined;
-      if (event && typeof event.meetingId === "string" && typeof event.userId === "string" && typeof event.canRecord === "boolean") {
-        handlers.onPermissions?.({ meetingId: event.meetingId, userId: event.userId, canRecord: event.canRecord });
+      const event = payload as
+        { meetingId?: string; userId?: string; canRecord?: boolean } | undefined;
+      if (
+        event &&
+        typeof event.meetingId === "string" &&
+        typeof event.userId === "string" &&
+        typeof event.canRecord === "boolean"
+      ) {
+        handlers.onPermissions?.({
+          meetingId: event.meetingId,
+          userId: event.userId,
+          canRecord: event.canRecord,
+        });
       }
     });
 
@@ -280,9 +326,19 @@ export function connectMeetingSocket(
     });
 
     created.on("transcription:ready", (payload: unknown) => {
-      const event = payload as { meetingId?: string; recordingId?: string; runVersion?: number } | undefined;
-      if (event && typeof event.meetingId === "string" && typeof event.recordingId === "string" && typeof event.runVersion === "number") {
-        handlers.onTranscriptionReady?.({ meetingId: event.meetingId, recordingId: event.recordingId, runVersion: event.runVersion });
+      const event = payload as
+        { meetingId?: string; recordingId?: string; runVersion?: number } | undefined;
+      if (
+        event &&
+        typeof event.meetingId === "string" &&
+        typeof event.recordingId === "string" &&
+        typeof event.runVersion === "number"
+      ) {
+        handlers.onTranscriptionReady?.({
+          meetingId: event.meetingId,
+          recordingId: event.recordingId,
+          runVersion: event.runVersion,
+        });
       }
     });
 
@@ -294,9 +350,19 @@ export function connectMeetingSocket(
     });
 
     created.on("intelligence:ready", (payload: unknown) => {
-      const event = payload as { meetingId?: string; intelligenceId?: string; runVersion?: number } | undefined;
-      if (event && typeof event.meetingId === "string" && typeof event.intelligenceId === "string" && typeof event.runVersion === "number") {
-        handlers.onIntelligenceReady?.({ meetingId: event.meetingId, intelligenceId: event.intelligenceId, runVersion: event.runVersion });
+      const event = payload as
+        { meetingId?: string; intelligenceId?: string; runVersion?: number } | undefined;
+      if (
+        event &&
+        typeof event.meetingId === "string" &&
+        typeof event.intelligenceId === "string" &&
+        typeof event.runVersion === "number"
+      ) {
+        handlers.onIntelligenceReady?.({
+          meetingId: event.meetingId,
+          intelligenceId: event.intelligenceId,
+          runVersion: event.runVersion,
+        });
       }
     });
 

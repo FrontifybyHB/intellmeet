@@ -7,7 +7,6 @@ import {
   House,
   LogOut,
   Menu,
-  Terminal,
   UserRound,
   Video,
   type LucideIcon,
@@ -213,10 +212,11 @@ export function AppLayout() {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-30 hidden h-16 items-center justify-between gap-4 border-b bg-background/90 px-6 backdrop-blur lg:flex lg:px-8">
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold">
-              {routeMeta.title}
-            </p>
-            <nav aria-label="Breadcrumb" className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground">
+            <p className="truncate text-sm font-semibold">{routeMeta.title}</p>
+            <nav
+              aria-label="Breadcrumb"
+              className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground"
+            >
               {routeMeta.breadcrumbs.map((crumb, index) => (
                 <span key={`${crumb}-${index}`}>
                   {index > 0 ? " / " : ""}

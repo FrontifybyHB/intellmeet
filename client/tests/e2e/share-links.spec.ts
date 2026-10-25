@@ -28,7 +28,10 @@ test("title-only create → copy URL → logged-out invitee → register/login �
   await page.getByLabel(/password/i).fill(pw);
   await page.getByRole("button", { name: /^sign in$/i }).click();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
-  await page.getByRole("link", { name: /new meeting/i }).first().click();
+  await page
+    .getByRole("link", { name: /new meeting/i })
+    .first()
+    .click();
   await page.getByLabel(/title/i).fill(`share ${stamp}`);
   await page.getByRole("button", { name: /create/i }).click();
   const urlText = await page.getByTestId("join-url").textContent();
@@ -52,7 +55,9 @@ test("title-only create → copy URL → logged-out invitee → register/login �
   await invite.getByLabel(/password/i).fill(pw);
   await invite.getByRole("button", { name: /^sign in$/i }).click();
   // After sign-in the invite returns to the exact meeting.
-  await expect(invite.getByRole("button", { name: /join meeting/i })).toBeVisible({ timeout: 15000 });
+  await expect(invite.getByRole("button", { name: /join meeting/i })).toBeVisible({
+    timeout: 15000,
+  });
   await invite.getByRole("button", { name: /join meeting/i }).click();
   // Joined invitee lands on the meeting detail route for that meeting
   // (previously the dev-only Meeting Lab screen).

@@ -19,8 +19,7 @@ export function JoinPage() {
       onJoined={(result, preferences) => {
         putJoinHandoff(result);
         navigate(meetingPath(result.meetingId), { replace: true, state: { preferences } });
-      }
-      }
+      }}
     />
   );
 }

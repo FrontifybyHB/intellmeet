@@ -9,7 +9,9 @@ describe("LiveKit connection authentication handling", () => {
   });
 
   it("does not classify application authorization errors by message alone", () => {
-    expect(isLiveKitAuthFailure({ code: "UNAUTHORIZED", message: "Authentication has expired." })).toBe(false);
+    expect(
+      isLiveKitAuthFailure({ code: "UNAUTHORIZED", message: "Authentication has expired." }),
+    ).toBe(false);
     expect(isLiveKitAuthFailure(new Error("Network connection failed"))).toBe(false);
   });
 });

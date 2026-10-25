@@ -18,11 +18,7 @@ export interface RequestLogEntry {
 export type RequestLog = RequestLogEntry[];
 
 /** Builds one log entry from a failed contract call. */
-export function requestLogEntry(
-  method: string,
-  path: string,
-  err: unknown,
-): RequestLogEntry {
+export function requestLogEntry(method: string, path: string, err: unknown): RequestLogEntry {
   const status = err instanceof ApiError ? err.status : "ERR";
   const message =
     err instanceof ApiError

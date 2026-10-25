@@ -63,6 +63,11 @@ describe("middleware behavior", () => {
     assert.equal(res.headers.get("x-content-type-options"), "nosniff");
     assert.equal(res.headers.get("x-frame-options"), "DENY");
     assert.equal(res.headers.get("referrer-policy"), "no-referrer");
+    assert.match(
+      res.headers.get("strict-transport-security") || "",
+      /max-age=31536000/,
+      "Helmet should enable HSTS"
+    );
     assert.equal(res.headers.get("x-powered-by"), null);
   });
 

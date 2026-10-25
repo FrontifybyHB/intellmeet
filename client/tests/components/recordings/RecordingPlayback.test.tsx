@@ -43,9 +43,17 @@ beforeEach(() => {
 
 describe("RecordingPlayback URL expiry and refresh", () => {
   it("opens a recording selected by a shared results link", async () => {
-    routeApi({ [urlPath]: { url: "https://storage.example/recording.mp4?token=shared", expiresAt: new Date(Date.now() + 60_000).toISOString() } });
+    routeApi({
+      [urlPath]: {
+        url: "https://storage.example/recording.mp4?token=shared",
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      },
+    });
     render(<PlayRecordingButton meetingId={MEETING_ID} recordingId={RECORDING_ID} autoOpen />);
-    expect(await screen.findByTestId("recording-player")).toHaveAttribute("src", "https://storage.example/recording.mp4?token=shared");
+    expect(await screen.findByTestId("recording-player")).toHaveAttribute(
+      "src",
+      "https://storage.example/recording.mp4?token=shared",
+    );
   });
   it("mints the link on demand when opened and does not fetch when closed", async () => {
     const user = userEvent.setup();

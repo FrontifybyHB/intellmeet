@@ -20,14 +20,18 @@ function renderLanding() {
 describe("PublicLanding", () => {
   it("allowlists invite destinations", () => {
     expect(resolveJoinDestination("https://example.com/join/ABCDEFGHIJKLMNOPQRSTUV")).toBeNull();
-    expect(resolveJoinDestination("/join/ABCDEFGHIJKLMNOPQRSTUV")).toBe("/join/ABCDEFGHIJKLMNOPQRSTUV");
+    expect(resolveJoinDestination("/join/ABCDEFGHIJKLMNOPQRSTUV")).toBe(
+      "/join/ABCDEFGHIJKLMNOPQRSTUV",
+    );
   });
 
   it("presents the product workflow and existing navigation CTAs", () => {
     renderLanding();
 
     expect(screen.getByRole("heading", { name: /meet clearly/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /from initial hello to team follow-through/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /from initial hello to team follow-through/i }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /sign in/i })).toHaveAttribute("href", "/login");
     expect(screen.getByRole("link", { name: /get started/i })).toHaveAttribute("href", "/register");
   });
@@ -44,6 +48,8 @@ describe("PublicLanding", () => {
     await user.clear(input);
     await user.type(input, "/join/ABCDEFGHIJKLMNOPQRSTUV");
     await user.click(screen.getByRole("button", { name: /^join$/i }));
-    expect(screen.getByTestId("landing-route-marker")).toHaveTextContent("/join/ABCDEFGHIJKLMNOPQRSTUV");
+    expect(screen.getByTestId("landing-route-marker")).toHaveTextContent(
+      "/join/ABCDEFGHIJKLMNOPQRSTUV",
+    );
   });
 });

@@ -30,7 +30,9 @@ export function ActionItemReview({
             </>
           )}
           {item.state === "approved" && item.task.status !== "created" && (
-            <button type="button" onClick={() => onCreateTask(item)}>Create task</button>
+            <button type="button" onClick={() => onCreateTask(item)}>
+              Create task
+            </button>
           )}
         </li>
       ))}

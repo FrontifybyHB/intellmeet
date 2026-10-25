@@ -24,11 +24,23 @@ export interface RouteShellMeta {
 }
 
 const SHELL_ROUTES: Array<{ path: string; meta: RouteShellMeta }> = [
-  { path: ROUTES.authenticatedHome, meta: { title: "Overview", breadcrumbs: ["Workspace", "Overview"] } },
-  { path: ROUTES.newMeeting, meta: { title: "New meeting", breadcrumbs: ["Workspace", "Meetings", "New meeting"] } },
+  {
+    path: ROUTES.authenticatedHome,
+    meta: { title: "Overview", breadcrumbs: ["Workspace", "Overview"] },
+  },
+  {
+    path: ROUTES.newMeeting,
+    meta: { title: "New meeting", breadcrumbs: ["Workspace", "Meetings", "New meeting"] },
+  },
   { path: ROUTES.meetings, meta: { title: "Meetings", breadcrumbs: ["Workspace", "Meetings"] } },
-  { path: ROUTES.recordings, meta: { title: "Recordings", breadcrumbs: ["Workspace", "Recordings"] } },
-  { path: ROUTES.meetingResults, meta: { title: "Meeting results", breadcrumbs: ["Workspace", "Meetings", "Results"] } },
+  {
+    path: ROUTES.recordings,
+    meta: { title: "Recordings", breadcrumbs: ["Workspace", "Recordings"] },
+  },
+  {
+    path: ROUTES.meetingResults,
+    meta: { title: "Meeting results", breadcrumbs: ["Workspace", "Meetings", "Results"] },
+  },
   { path: ROUTES.account, meta: { title: "Account", breadcrumbs: ["Workspace", "Account"] } },
 ];
 

@@ -20,7 +20,6 @@ function Tabs({
   );
 }
 
-
 function TabsList({
   className,
   variant = "default",

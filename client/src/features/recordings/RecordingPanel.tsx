@@ -60,7 +60,9 @@ function formatTimestamp(value: string | null): string {
   return date.toLocaleString();
 }
 
-function stateBadgeVariant(state: Recording["state"]): "default" | "secondary" | "destructive" | "outline" {
+function stateBadgeVariant(
+  state: Recording["state"],
+): "default" | "secondary" | "destructive" | "outline" {
   switch (recordingPhase(state)) {
     case "ready":
       return "default";
@@ -74,7 +76,12 @@ function stateBadgeVariant(state: Recording["state"]): "default" | "secondary" |
   }
 }
 
-export function RecordingPanel({ meetingId, isHost, canRecord = isHost, selectedRecordingId }: RecordingPanelProps) {
+export function RecordingPanel({
+  meetingId,
+  isHost,
+  canRecord = isHost,
+  selectedRecordingId,
+}: RecordingPanelProps) {
   const {
     consent,
     recordings,
@@ -126,8 +133,8 @@ export function RecordingPanel({ meetingId, isHost, canRecord = isHost, selected
         <CardHeader>
           <CardTitle>Your recording consent</CardTitle>
           <CardDescription>
-            Recording can only start when every participant has approved the current notice.
-            Your choice applies to you alone.
+            Recording can only start when every participant has approved the current notice. Your
+            choice applies to you alone.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -193,8 +200,8 @@ export function RecordingPanel({ meetingId, isHost, canRecord = isHost, selected
 
           {recordingDecision === "approved" ? (
             <p className="text-xs text-muted-foreground">
-              Declining now stops any capture in progress and quarantines the output so it is
-              never published.
+              Declining now stops any capture in progress and quarantines the output so it is never
+              published.
             </p>
           ) : null}
 
@@ -253,8 +260,8 @@ export function RecordingPanel({ meetingId, isHost, canRecord = isHost, selected
           <CardHeader>
             <CardTitle>{isHost ? "Owner controls" : "Recording controls"}</CardTitle>
             <CardDescription>
-              Starting a recording requires the consent approval of every participant. The
-              server enforces your meeting-scoped recording permission and the consent gate.
+              Starting a recording requires the consent approval of every participant. The server
+              enforces your meeting-scoped recording permission and the consent gate.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -263,9 +270,7 @@ export function RecordingPanel({ meetingId, isHost, canRecord = isHost, selected
                 <Badge variant="secondary" data-testid="live-recording-state">
                   {recordingPhaseLabel(live.state)}
                 </Badge>
-                <span className="text-sm text-muted-foreground">
-                  Attempt {live.id}
-                </span>
+                <span className="text-sm text-muted-foreground">Attempt {live.id}</span>
                 <Button
                   variant="outline"
                   onClick={() => void stop(live.id)}
@@ -282,7 +287,11 @@ export function RecordingPanel({ meetingId, isHost, canRecord = isHost, selected
               </div>
             ) : (
               <div className="flex flex-wrap items-center gap-3">
-                <Button onClick={() => void start()} disabled={busy === "start"} data-testid="start-recording">
+                <Button
+                  onClick={() => void start()}
+                  disabled={busy === "start"}
+                  data-testid="start-recording"
+                >
                   {busy === "start" ? (
                     <Loader2Icon aria-hidden="true" className="animate-spin" />
                   ) : (
@@ -392,8 +401,12 @@ export function RecordingPanel({ meetingId, isHost, canRecord = isHost, selected
                         <span className="truncate text-sm text-muted-foreground">
                           {formatTimestamp(recording.createdAt)}
                         </span>
-                        {duration ? <span className="text-sm text-muted-foreground">{duration}</span> : null}
-                        {size ? <span className="text-sm text-muted-foreground">{size}</span> : null}
+                        {duration ? (
+                          <span className="text-sm text-muted-foreground">{duration}</span>
+                        ) : null}
+                        {size ? (
+                          <span className="text-sm text-muted-foreground">{size}</span>
+                        ) : null}
                       </div>
                       {errorMessage ? (
                         <p className="flex items-start gap-1.5 text-sm text-destructive">
@@ -403,7 +416,11 @@ export function RecordingPanel({ meetingId, isHost, canRecord = isHost, selected
                       ) : null}
                     </div>
                     {recording.state === "ready" ? (
-                      <PlayRecordingButton meetingId={meetingId} recordingId={recording.id} autoOpen={recording.id === selectedRecordingId} />
+                      <PlayRecordingButton
+                        meetingId={meetingId}
+                        recordingId={recording.id}
+                        autoOpen={recording.id === selectedRecordingId}
+                      />
                     ) : null}
                   </li>
                 );
@@ -413,8 +430,8 @@ export function RecordingPanel({ meetingId, isHost, canRecord = isHost, selected
 
           {hasMore ? (
             <p className="text-xs text-muted-foreground" data-testid="recordings-truncated">
-              This list shows the most recent recordings only. Older recordings exist, but the
-              API does not expose a way to page back to them yet.
+              This list shows the most recent recordings only. Older recordings exist, but the API
+              does not expose a way to page back to them yet.
             </p>
           ) : null}
         </CardContent>

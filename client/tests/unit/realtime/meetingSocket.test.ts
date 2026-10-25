@@ -69,7 +69,10 @@ describe("connectMeetingSocket", () => {
     const sending = send("Hello everyone");
     const sendCall = socketMock.emit.mock.calls.find(([event]) => event === "chat:send");
     expect(sendCall?.[1]).toMatchObject({ meetingId: "meeting-1", text: "Hello everyone" });
-    (sendCall?.[2] as (response: unknown) => void)?.({ ok: true, message: { id: "msg-1", text: "Hello everyone" } });
+    (sendCall?.[2] as (response: unknown) => void)?.({
+      ok: true,
+      message: { id: "msg-1", text: "Hello everyone" },
+    });
     await sending;
     expect(onChatMessage).toHaveBeenCalledWith({ id: "msg-1", text: "Hello everyone" });
     teardown();

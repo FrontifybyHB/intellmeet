@@ -15,15 +15,38 @@ vi.mock("@/features/auth/useAuth", () => ({ useAuth: useAuthMock }));
 describe("HomeDashboard", () => {
   beforeEach(() => {
     fetchHistory.mockReset();
-    useAuthMock.mockReturnValue({ user: { id: "u-1", name: "Himanshu", email: "h@example.com", role: "user" } });
+    useAuthMock.mockReturnValue({
+      user: { id: "u-1", name: "Himanshu", email: "h@example.com", role: "user" },
+    });
   });
 
   it("renders the overview with verified meeting history", async () => {
     fetchHistory.mockResolvedValueOnce({
       meetings: [
-        { id: "m-live", title: "Product planning", status: "live", isHost: true, scheduledAt: null, endedAt: null },
-        { id: "m-next", title: "Design sync", status: "scheduled", isHost: false, scheduledAt: "2026-10-24T11:30:00.000Z", endedAt: null },
-        { id: "m-old", title: "API review", status: "ended", isHost: true, scheduledAt: null, endedAt: "2026-10-23T15:15:00.000Z" },
+        {
+          id: "m-live",
+          title: "Product planning",
+          status: "live",
+          isHost: true,
+          scheduledAt: null,
+          endedAt: null,
+        },
+        {
+          id: "m-next",
+          title: "Design sync",
+          status: "scheduled",
+          isHost: false,
+          scheduledAt: "2026-10-24T11:30:00.000Z",
+          endedAt: null,
+        },
+        {
+          id: "m-old",
+          title: "API review",
+          status: "ended",
+          isHost: true,
+          scheduledAt: null,
+          endedAt: "2026-10-23T15:15:00.000Z",
+        },
       ],
       hasMore: false,
       nextCursor: null,

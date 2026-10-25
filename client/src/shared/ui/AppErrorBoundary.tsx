@@ -34,7 +34,11 @@ export class AppErrorBoundary extends Component<Props, State> {
           <ErrorState
             title="This page could not be displayed"
             message="Try again. If the problem continues, return to your meetings and retry the action."
-            action={<Button type="button" onClick={this.retry}>Try again</Button>}
+            action={
+              <Button type="button" onClick={this.retry}>
+                Try again
+              </Button>
+            }
             className="w-full max-w-lg"
           />
         </main>

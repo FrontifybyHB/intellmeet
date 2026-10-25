@@ -33,7 +33,10 @@ export function MeetingRoomToolbar({
   canEnd,
 }: MeetingRoomToolbarProps) {
   return (
-    <header className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-border/80 bg-card/80 px-4 py-3 backdrop-blur-md sm:px-6" role="banner">
+    <header
+      className="flex min-h-16 flex-wrap items-center justify-between gap-3 border-b border-border/80 bg-card/80 px-4 py-3 backdrop-blur-md sm:px-6"
+      role="banner"
+    >
       <div className="flex min-w-0 items-center gap-3">
         <div className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground shadow-sm">
           <Camera className="size-5" aria-hidden="true" />
@@ -41,7 +44,14 @@ export function MeetingRoomToolbar({
         <div className="min-w-0">
           <p className="truncate font-semibold tracking-tight">{title}</p>
           <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <span className={connected ? "size-2 rounded-full bg-emerald-500" : "size-2 rounded-full bg-muted-foreground"} aria-hidden="true" />
+            <span
+              className={
+                connected
+                  ? "size-2 rounded-full bg-emerald-500"
+                  : "size-2 rounded-full bg-muted-foreground"
+              }
+              aria-hidden="true"
+            />
             {connected ? "Connected" : "Connecting"}
           </p>
         </div>
@@ -52,7 +62,10 @@ export function MeetingRoomToolbar({
       </div>
 
       <div className="flex items-center gap-2">
-        <div className="flex items-center rounded-lg border border-border bg-muted/50 p-0.5" aria-label="Meeting view">
+        <div
+          className="flex items-center rounded-lg border border-border bg-muted/50 p-0.5"
+          aria-label="Meeting view"
+        >
           {views.map(({ mode, label, icon: Icon }) => (
             <Button
               key={mode}
@@ -61,7 +74,9 @@ export function MeetingRoomToolbar({
               size="icon"
               aria-label={label}
               aria-pressed={viewMode === mode}
-              className={viewMode === mode ? "bg-background text-primary shadow-sm" : "text-muted-foreground"}
+              className={
+                viewMode === mode ? "bg-background text-primary shadow-sm" : "text-muted-foreground"
+              }
               onClick={() => onViewModeChange(mode)}
             >
               <Icon className="size-4" aria-hidden="true" />

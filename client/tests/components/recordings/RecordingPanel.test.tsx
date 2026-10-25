@@ -249,7 +249,9 @@ describe("RecordingPanel host controls", () => {
     render(<RecordingPanel meetingId={MEETING_ID} isHost />);
     await user.click(await screen.findByTestId("start-recording"));
 
-    expect(await screen.findByText(/NOT_HOST: Only the host can perform this action/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/NOT_HOST: Only the host can perform this action/i),
+    ).toBeInTheDocument();
     expect(screen.queryByTestId("recording-row")).not.toBeInTheDocument();
   });
 
@@ -280,7 +282,10 @@ describe("RecordingPanel list and playback", () => {
     routeApi({
       [consentPath]: { noticeVersion: "v1", consent: null },
       [listPath]: {
-        recordings: [makeRecording(), makeRecording({ id: "rec-2", state: "failed", errorCode: "PROVIDER_FAILED" })],
+        recordings: [
+          makeRecording(),
+          makeRecording({ id: "rec-2", state: "failed", errorCode: "PROVIDER_FAILED" }),
+        ],
         hasMore: true,
       },
     });

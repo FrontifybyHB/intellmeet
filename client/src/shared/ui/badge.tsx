@@ -4,7 +4,6 @@ import { cn } from "@/shared/lib/utils";
 import { badgeVariants } from "@/shared/ui/badge-variants";
 import { Slot } from "radix-ui";
 
-
 function Badge({
   className,
   variant = "default",

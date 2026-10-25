@@ -25,12 +25,30 @@ describe("MeetingsOverview", () => {
   it("loads entitled meetings and follows the server cursor", async () => {
     fetchHistory
       .mockResolvedValueOnce({
-        meetings: [{ id: "m-1", title: "First", status: "ended", isHost: true, scheduledAt: null, endedAt: null }],
+        meetings: [
+          {
+            id: "m-1",
+            title: "First",
+            status: "ended",
+            isHost: true,
+            scheduledAt: null,
+            endedAt: null,
+          },
+        ],
         hasMore: true,
         nextCursor: "cursor-1",
       })
       .mockResolvedValueOnce({
-        meetings: [{ id: "m-2", title: "Second", status: "live", isHost: false, scheduledAt: null, endedAt: null }],
+        meetings: [
+          {
+            id: "m-2",
+            title: "Second",
+            status: "live",
+            isHost: false,
+            scheduledAt: null,
+            endedAt: null,
+          },
+        ],
         hasMore: false,
         nextCursor: null,
       });

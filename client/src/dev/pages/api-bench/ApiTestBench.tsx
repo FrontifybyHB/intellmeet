@@ -144,10 +144,25 @@ export function ApiTestBench() {
           </label>
         </div>
         <div>
-          <button onClick={() => void manageRun(() => apiFetch("/meetings", { method: "POST", body: { title: newTitle } }))}>
+          <button
+            onClick={() =>
+              void manageRun(() =>
+                apiFetch("/meetings", { method: "POST", body: { title: newTitle } }),
+              )
+            }
+          >
             POST create meeting
           </button>
-          <button onClick={() => void manageRun(() => apiFetch(`/meetings/${meetingId}/members`, { method: "POST", body: { userId: admitUserId } }))}>
+          <button
+            onClick={() =>
+              void manageRun(() =>
+                apiFetch(`/meetings/${meetingId}/members`, {
+                  method: "POST",
+                  body: { userId: admitUserId },
+                }),
+              )
+            }
+          >
             POST admit member
           </button>
         </div>
@@ -157,12 +172,19 @@ export function ApiTestBench() {
         </p>
         <div>
           <label>
-            joinCode <input value={joinCode} onChange={(e) => setJoinCode(e.target.value)} size={30} />
+            joinCode{" "}
+            <input value={joinCode} onChange={(e) => setJoinCode(e.target.value)} size={30} />
           </label>
           <button onClick={() => void manageRun(() => apiFetch(`/meeting-links/${joinCode}`))}>
             GET resolve link
           </button>
-          <button onClick={() => void manageRun(() => apiFetch(`/meeting-links/${joinCode}/join`, { method: "POST", body: {} }))}>
+          <button
+            onClick={() =>
+              void manageRun(() =>
+                apiFetch(`/meeting-links/${joinCode}/join`, { method: "POST", body: {} }),
+              )
+            }
+          >
             POST link join
           </button>
         </div>
@@ -183,11 +205,7 @@ export function ApiTestBench() {
           <label>
             {" "}
             password{" "}
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
           </label>
           <label>
             {" "}
@@ -200,24 +218,57 @@ export function ApiTestBench() {
           </label>
         </div>
         <div>
-          <button onClick={() => void authRun(() => apiFetch("/auth/register", { method: "POST", body: { name, email, password } }))}>
+          <button
+            onClick={() =>
+              void authRun(() =>
+                apiFetch("/auth/register", { method: "POST", body: { name, email, password } }),
+              )
+            }
+          >
             POST register
           </button>
-          <button onClick={() => void authRun(() => apiFetch("/auth/login", { method: "POST", body: { email, password } }))}>
+          <button
+            onClick={() =>
+              void authRun(() =>
+                apiFetch("/auth/login", { method: "POST", body: { email, password } }),
+              )
+            }
+          >
             POST login
           </button>
           <button onClick={() => void authRun(() => apiFetch("/auth/me"))}>GET me</button>
           <button onClick={() => void authRun(() => apiFetch("/auth/csrf"))}>GET csrf</button>
-          <button onClick={() => void authRun(() => apiFetch("/auth/refresh", { method: "POST", body: {} }))}>
+          <button
+            onClick={() =>
+              void authRun(() => apiFetch("/auth/refresh", { method: "POST", body: {} }))
+            }
+          >
             POST refresh
           </button>
-          <button onClick={() => void authRun(() => apiFetch("/auth/logout", { method: "POST", body: {} }))}>
+          <button
+            onClick={() =>
+              void authRun(() => apiFetch("/auth/logout", { method: "POST", body: {} }))
+            }
+          >
             POST logout
           </button>
-          <button onClick={() => void authRun(() => apiFetch("/auth/logout-all", { method: "POST", body: {} }))}>
+          <button
+            onClick={() =>
+              void authRun(() => apiFetch("/auth/logout-all", { method: "POST", body: {} }))
+            }
+          >
             POST logout-all
           </button>
-          <button onClick={() => void authRun(() => apiFetch("/auth/change-password", { method: "PATCH", body: { currentPassword: password, newPassword } }))}>
+          <button
+            onClick={() =>
+              void authRun(() =>
+                apiFetch("/auth/change-password", {
+                  method: "PATCH",
+                  body: { currentPassword: password, newPassword },
+                }),
+              )
+            }
+          >
             PATCH change-password
           </button>
         </div>
@@ -227,7 +278,9 @@ export function ApiTestBench() {
 
       <section>
         <h2>History (/api/meetings)</h2>
-        <button onClick={() => void historyRun(() => apiFetch(`/meetings${qs()}`))}>GET list</button>
+        <button onClick={() => void historyRun(() => apiFetch(`/meetings${qs()}`))}>
+          GET list
+        </button>
         <button onClick={() => void historyRun(() => apiFetch(`/meetings/${meetingId}`))}>
           GET detail
         </button>
@@ -237,7 +290,13 @@ export function ApiTestBench() {
 
       <section>
         <h2>Join</h2>
-        <button onClick={() => void joinRun(() => apiFetch(`/meetings/${meetingId}/join`, { method: "POST", body: {} }))}>
+        <button
+          onClick={() =>
+            void joinRun(() =>
+              apiFetch(`/meetings/${meetingId}/join`, { method: "POST", body: {} }),
+            )
+          }
+        >
           POST /:id/join
         </button>
         <pre>{joinOut}</pre>
@@ -256,7 +315,9 @@ export function ApiTestBench() {
             <input value={clientMessageId} onChange={(e) => setClientMessageId(e.target.value)} />
           </label>
         </div>
-        <button onClick={() => void msgRun(() => apiFetch(`/meetings/${meetingId}/messages${qs()}`))}>
+        <button
+          onClick={() => void msgRun(() => apiFetch(`/meetings/${meetingId}/messages${qs()}`))}
+        >
           GET messages
         </button>
         <pre>{msgOut}</pre>
@@ -279,10 +340,23 @@ export function ApiTestBench() {
             aiTransfer <input value={aiTransfer} onChange={(e) => setAiTransfer(e.target.value)} />
           </label>
         </div>
-        <button onClick={() => void consentRun(() => apiFetch(`/meetings/${meetingId}/recording-consent`, { method: "POST", body: { decision, noticeVersion, aiTransfer } }))}>
+        <button
+          onClick={() =>
+            void consentRun(() =>
+              apiFetch(`/meetings/${meetingId}/recording-consent`, {
+                method: "POST",
+                body: { decision, noticeVersion, aiTransfer },
+              }),
+            )
+          }
+        >
           POST consent
         </button>
-        <button onClick={() => void consentRun(() => apiFetch(`/meetings/${meetingId}/recording-consent`))}>
+        <button
+          onClick={() =>
+            void consentRun(() => apiFetch(`/meetings/${meetingId}/recording-consent`))
+          }
+        >
           GET consent
         </button>
         <pre>{consentOut}</pre>
@@ -291,19 +365,42 @@ export function ApiTestBench() {
 
       <section>
         <h2>Recordings</h2>
-        <button onClick={() => void recRun(() => apiFetch(`/meetings/${meetingId}/recordings/start`, { method: "POST", body: {} }))}>
+        <button
+          onClick={() =>
+            void recRun(() =>
+              apiFetch(`/meetings/${meetingId}/recordings/start`, { method: "POST", body: {} }),
+            )
+          }
+        >
           POST start
         </button>
-        <button onClick={() => void recRun(() => apiFetch(`/meetings/${meetingId}/recordings/${recordingId}/stop`, { method: "POST", body: {} }))}>
+        <button
+          onClick={() =>
+            void recRun(() =>
+              apiFetch(`/meetings/${meetingId}/recordings/${recordingId}/stop`, {
+                method: "POST",
+                body: {},
+              }),
+            )
+          }
+        >
           POST stop
         </button>
         <button onClick={() => void recRun(() => apiFetch(`/meetings/${meetingId}/recordings`))}>
           GET list
         </button>
-        <button onClick={() => void recRun(() => apiFetch(`/meetings/${meetingId}/recordings/${recordingId}`))}>
+        <button
+          onClick={() =>
+            void recRun(() => apiFetch(`/meetings/${meetingId}/recordings/${recordingId}`))
+          }
+        >
           GET one
         </button>
-        <button onClick={() => void recRun(() => apiFetch(`/meetings/${meetingId}/recordings/${recordingId}/url`))}>
+        <button
+          onClick={() =>
+            void recRun(() => apiFetch(`/meetings/${meetingId}/recordings/${recordingId}/url`))
+          }
+        >
           GET url
         </button>
         <pre>{recOut}</pre>
@@ -312,7 +409,11 @@ export function ApiTestBench() {
 
       <section>
         <h2>End meeting</h2>
-        <button onClick={() => void endRun(() => apiFetch(`/meetings/${meetingId}/end`, { method: "POST", body: {} }))}>
+        <button
+          onClick={() =>
+            void endRun(() => apiFetch(`/meetings/${meetingId}/end`, { method: "POST", body: {} }))
+          }
+        >
           POST /:id/end
         </button>
         <pre>{endOut}</pre>
@@ -321,16 +422,45 @@ export function ApiTestBench() {
 
       <section>
         <h2>Transcription</h2>
-        <button onClick={() => void txRun(() => apiFetch(`/meetings/${meetingId}/recordings/${recordingId}/transcription`, { method: "POST", body: {} }))}>
+        <button
+          onClick={() =>
+            void txRun(() =>
+              apiFetch(`/meetings/${meetingId}/recordings/${recordingId}/transcription`, {
+                method: "POST",
+                body: {},
+              }),
+            )
+          }
+        >
           POST start
         </button>
-        <button onClick={() => void txRun(() => apiFetch(`/meetings/${meetingId}/recordings/${recordingId}/transcription`))}>
+        <button
+          onClick={() =>
+            void txRun(() =>
+              apiFetch(`/meetings/${meetingId}/recordings/${recordingId}/transcription`),
+            )
+          }
+        >
           GET status
         </button>
-        <button onClick={() => void txRun(() => apiFetch(`/meetings/${meetingId}/recordings/${recordingId}/transcript${qs()}`))}>
+        <button
+          onClick={() =>
+            void txRun(() =>
+              apiFetch(`/meetings/${meetingId}/recordings/${recordingId}/transcript${qs()}`),
+            )
+          }
+        >
           GET transcript
         </button>
-        <button onClick={() => void txRun(() => apiFetch(`/meetings/${meetingId}/recordings/${recordingId}/transcription`, { method: "DELETE" }))}>
+        <button
+          onClick={() =>
+            void txRun(() =>
+              apiFetch(`/meetings/${meetingId}/recordings/${recordingId}/transcription`, {
+                method: "DELETE",
+              }),
+            )
+          }
+        >
           DELETE cancel
         </button>
         <pre>{txOut}</pre>
@@ -345,7 +475,8 @@ export function ApiTestBench() {
           </label>
           <label>
             {" "}
-            version <input value={reviewVersion} onChange={(e) => setReviewVersion(e.target.value)} />
+            version{" "}
+            <input value={reviewVersion} onChange={(e) => setReviewVersion(e.target.value)} />
           </label>
           <label>
             {" "}
@@ -358,22 +489,74 @@ export function ApiTestBench() {
           </label>
         </div>
         <div>
-          <button onClick={() => void ixRun(() => apiFetch(`/meetings/${meetingId}/recordings/${recordingId}/intelligence`, { method: "POST", body: {} }))}>
+          <button
+            onClick={() =>
+              void ixRun(() =>
+                apiFetch(`/meetings/${meetingId}/recordings/${recordingId}/intelligence`, {
+                  method: "POST",
+                  body: {},
+                }),
+              )
+            }
+          >
             POST start ix
           </button>
-          <button onClick={() => void ixRun(() => apiFetch(`/meetings/${meetingId}/recordings/${recordingId}/intelligence`))}>
+          <button
+            onClick={() =>
+              void ixRun(() =>
+                apiFetch(`/meetings/${meetingId}/recordings/${recordingId}/intelligence`),
+              )
+            }
+          >
             GET ix status
           </button>
-          <button onClick={() => void ixRun(() => apiFetch(`/meetings/${meetingId}/recordings/${recordingId}/intelligence`, { method: "DELETE" }))}>
+          <button
+            onClick={() =>
+              void ixRun(() =>
+                apiFetch(`/meetings/${meetingId}/recordings/${recordingId}/intelligence`, {
+                  method: "DELETE",
+                }),
+              )
+            }
+          >
             DELETE ix cancel
           </button>
-          <button onClick={() => void ixRun(() => apiFetch(`/meetings/${meetingId}/recordings/${recordingId}/action-items${qs()}`))}>
+          <button
+            onClick={() =>
+              void ixRun(() =>
+                apiFetch(`/meetings/${meetingId}/recordings/${recordingId}/action-items${qs()}`),
+              )
+            }
+          >
             GET action-items
           </button>
-          <button onClick={() => void ixRun(() => apiFetch(`/meetings/${meetingId}/action-items/${itemId}`, { method: "PATCH", body: { action: reviewAction, version: Number(reviewVersion), ...(reviewTitle ? { title: reviewTitle } : {}), ...(ownerUserId ? { ownerUserId } : { confirmUnassigned: true }) } }))}>
+          <button
+            onClick={() =>
+              void ixRun(() =>
+                apiFetch(`/meetings/${meetingId}/action-items/${itemId}`, {
+                  method: "PATCH",
+                  body: {
+                    action: reviewAction,
+                    version: Number(reviewVersion),
+                    ...(reviewTitle ? { title: reviewTitle } : {}),
+                    ...(ownerUserId ? { ownerUserId } : { confirmUnassigned: true }),
+                  },
+                }),
+              )
+            }
+          >
             PATCH review item
           </button>
-          <button onClick={() => void ixRun(() => apiFetch(`/meetings/${meetingId}/action-items/${itemId}/task`, { method: "POST", body: {} }))}>
+          <button
+            onClick={() =>
+              void ixRun(() =>
+                apiFetch(`/meetings/${meetingId}/action-items/${itemId}/task`, {
+                  method: "POST",
+                  body: {},
+                }),
+              )
+            }
+          >
             POST create task
           </button>
         </div>
@@ -383,18 +566,22 @@ export function ApiTestBench() {
 
       <section>
         <h2>Dev lab</h2>
-        <button onClick={() => void labRun(() => fetch(`${API_ORIGIN}/dev/meeting-lab`, { credentials: "include" }).then((r) => r.json()))}>
+        <button
+          onClick={() =>
+            void labRun(() =>
+              fetch(`${API_ORIGIN}/dev/meeting-lab`, { credentials: "include" }).then((r) =>
+                r.json(),
+              ),
+            )
+          }
+        >
           GET /dev/meeting-lab
         </button>
         <pre>{labOut}</pre>
       </section>
       <hr />
 
-      <SocketConsole
-        meetingId={meetingId}
-        chatText={chatText}
-        clientMessageId={clientMessageId}
-      />
+      <SocketConsole meetingId={meetingId} chatText={chatText} clientMessageId={clientMessageId} />
       <hr />
 
       <LiveKitConsole meetingId={meetingId} />

@@ -34,7 +34,10 @@ export default defineConfig({
           root: fileURLToPath(new URL("./tests", import.meta.url)),
           setupFiles,
           // Only the DOM-driven suites: unit/ is owned by the unit project.
-          include: ["components/**/*.{test,spec}.{ts,tsx}", "integration/**/*.{test,spec}.{ts,tsx}"],
+          include: [
+            "components/**/*.{test,spec}.{ts,tsx}",
+            "integration/**/*.{test,spec}.{ts,tsx}",
+          ],
           css: false,
           restoreMocks: true,
         },

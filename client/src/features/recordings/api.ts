@@ -123,14 +123,11 @@ export function saveRecordingConsent({
   noticeVersion: string;
   aiTransfer?: AiTransferDecision;
 }): Promise<{ consent: ConsentRecord }> {
-  return apiFetch<{ consent: ConsentRecord }>(
-    `/meetings/${meetingId}/recording-consent`,
-    {
-      method: "POST",
-      body: { decision, noticeVersion, aiTransfer },
-      cache: "no-store",
-    },
-  );
+  return apiFetch<{ consent: ConsentRecord }>(`/meetings/${meetingId}/recording-consent`, {
+    method: "POST",
+    body: { decision, noticeVersion, aiTransfer },
+    cache: "no-store",
+  });
 }
 
 /** Starts a recording (host only; the server enforces NOT_HOST). */
@@ -147,10 +144,11 @@ export function stopMeetingRecording(
   meetingId: string,
   recordingId: string,
 ): Promise<RecordingEnvelope> {
-  return apiFetch<RecordingEnvelope>(
-    `/meetings/${meetingId}/recordings/${recordingId}/stop`,
-    { method: "POST", body: {}, cache: "no-store" },
-  );
+  return apiFetch<RecordingEnvelope>(`/meetings/${meetingId}/recordings/${recordingId}/stop`, {
+    method: "POST",
+    body: {},
+    cache: "no-store",
+  });
 }
 
 /** Lists the meeting's recordings, newest first, windowed by `limit`. */
@@ -158,10 +156,9 @@ export function listMeetingRecordings(
   meetingId: string,
   limit: number,
 ): Promise<RecordingListResponse> {
-  return apiFetch<RecordingListResponse>(
-    `/meetings/${meetingId}/recordings?limit=${limit}`,
-    { cache: "no-store" },
-  );
+  return apiFetch<RecordingListResponse>(`/meetings/${meetingId}/recordings?limit=${limit}`, {
+    cache: "no-store",
+  });
 }
 
 /** Reads one recording (authoritative recovery read). */
@@ -169,10 +166,9 @@ export function fetchMeetingRecording(
   meetingId: string,
   recordingId: string,
 ): Promise<{ recording: Recording }> {
-  return apiFetch<{ recording: Recording }>(
-    `/meetings/${meetingId}/recordings/${recordingId}`,
-    { cache: "no-store" },
-  );
+  return apiFetch<{ recording: Recording }>(`/meetings/${meetingId}/recordings/${recordingId}`, {
+    cache: "no-store",
+  });
 }
 
 /**
@@ -184,10 +180,9 @@ export function fetchRecordingAccessLink(
   meetingId: string,
   recordingId: string,
 ): Promise<RecordingAccessLink> {
-  return apiFetch<RecordingAccessLink>(
-    `/meetings/${meetingId}/recordings/${recordingId}/url`,
-    { cache: "no-store" },
-  );
+  return apiFetch<RecordingAccessLink>(`/meetings/${meetingId}/recordings/${recordingId}/url`, {
+    cache: "no-store",
+  });
 }
 
 /**

@@ -15,10 +15,7 @@ export function fetchSession(): Promise<AuthSessionResponse> {
   return apiFetch<AuthSessionResponse>("/auth/me");
 }
 
-export function loginRequest(
-  email: string,
-  password: string,
-): Promise<AuthSessionResponse> {
+export function loginRequest(email: string, password: string): Promise<AuthSessionResponse> {
   return apiFetch<AuthSessionResponse>("/auth/login", {
     method: "POST",
     body: { email, password },

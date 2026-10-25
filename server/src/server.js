@@ -37,6 +37,7 @@ async function startServer() {
   await new Promise((resolve) => {
     server.listen(port, resolve);
   });
+  console.log("server_listening 3000")
   logger.info("server_listening", { ...getSafeEnvSummary(), env: nodeEnv });
   return { server, sockets };
 }

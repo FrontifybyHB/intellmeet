@@ -99,7 +99,9 @@ export function endMeeting(meetingId: string): Promise<{ meeting: { status: stri
   return apiFetch(`/meetings/${meetingId}/end`, { method: "POST", body: {} });
 }
 
-export function deleteMeeting(meetingId: string): Promise<{ meeting: { status: string }; alreadyDeleted: boolean }> {
+export function deleteMeeting(
+  meetingId: string,
+): Promise<{ meeting: { status: string }; alreadyDeleted: boolean }> {
   return apiFetch(`/meetings/${meetingId}`, { method: "DELETE" });
 }
 

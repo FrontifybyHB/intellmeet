@@ -83,13 +83,19 @@ export function MeetingsOverview() {
       />
 
       {loading ? <LoadingState label="Loading meetings…" /> : null}
-      {!loading && error ? <ErrorState title="Meeting history unavailable" message={error} /> : null}
+      {!loading && error ? (
+        <ErrorState title="Meeting history unavailable" message={error} />
+      ) : null}
       {!loading && !error && meetings.length === 0 ? (
         <EmptyState
           icon={Video}
           title="No meetings yet"
           description="Create a meeting to get a share link you can send to participants."
-          action={<Button asChild variant="outline"><Link to={ROUTES.newMeeting}>Create a meeting</Link></Button>}
+          action={
+            <Button asChild variant="outline">
+              <Link to={ROUTES.newMeeting}>Create a meeting</Link>
+            </Button>
+          }
         />
       ) : null}
       {!loading && !error && meetings.length > 0 ? (
@@ -97,7 +103,11 @@ export function MeetingsOverview() {
           {meetings.map((meeting) => (
             <Link
               key={meeting.id}
-              to={meeting.status === "ended" ? meetingResultsPath(meeting.id) : `${ROUTES.meetings}/${meeting.id}`}
+              to={
+                meeting.status === "ended"
+                  ? meetingResultsPath(meeting.id)
+                  : `${ROUTES.meetings}/${meeting.id}`
+              }
               className="block rounded-xl border bg-card p-4 shadow-sm transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
@@ -105,12 +115,26 @@ export function MeetingsOverview() {
                   <h2 className="truncate font-semibold">{meeting.title || "Untitled meeting"}</h2>
                   <p className="mt-1 text-sm text-muted-foreground">{dateLabel(meeting.endedAt)}</p>
                 </div>
-                <span className="rounded-full border px-2.5 py-1 text-xs font-medium capitalize">{meeting.status}</span>
+                <span className="rounded-full border px-2.5 py-1 text-xs font-medium capitalize">
+                  {meeting.status}
+                </span>
               </div>
-              <p className="mt-3 text-xs text-muted-foreground">{meeting.isHost ? "Host" : "Participant"} · {meeting.status === "ended" ? "View results" : "Open meeting"}</p>
+              <p className="mt-3 text-xs text-muted-foreground">
+                {meeting.isHost ? "Host" : "Participant"} ·{" "}
+                {meeting.status === "ended" ? "View results" : "Open meeting"}
+              </p>
             </Link>
           ))}
-          {hasMore ? <Button type="button" variant="outline" onClick={() => void loadMore()} disabled={loadingMore}>{loadingMore ? "Loading…" : "Load more meetings"}</Button> : null}
+          {hasMore ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void loadMore()}
+              disabled={loadingMore}
+            >
+              {loadingMore ? "Loading…" : "Load more meetings"}
+            </Button>
+          ) : null}
         </div>
       ) : null}
     </div>

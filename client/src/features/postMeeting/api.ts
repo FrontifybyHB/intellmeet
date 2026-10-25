@@ -75,9 +75,19 @@ export interface ActionItem {
   runVersion: number;
   state: "proposed" | "approved" | "rejected";
   version: number;
-  proposal: { title: string; detail: string | null; proposedOwnerText: string | null; proposedDueDateText: string | null };
+  proposal: {
+    title: string;
+    detail: string | null;
+    proposedOwnerText: string | null;
+    proposedDueDateText: string | null;
+  };
   evidence: Evidence;
-  reviewed: { title: string | null; detail: string | null; dueDateText: string | null; ownerUserId: string | null };
+  reviewed: {
+    title: string | null;
+    detail: string | null;
+    dueDateText: string | null;
+    ownerUserId: string | null;
+  };
   task: { status: string; taskId?: string; idempotencyKey: string | null };
 }
 
@@ -91,7 +101,10 @@ export interface ActionItemsPage {
 const noStore = { cache: "no-store" as const };
 
 export function fetchTranscriptionStatus(meetingId: string, recordingId: string) {
-  return apiFetch<TranscriptionStatus>(`/meetings/${meetingId}/recordings/${recordingId}/transcription`, noStore);
+  return apiFetch<TranscriptionStatus>(
+    `/meetings/${meetingId}/recordings/${recordingId}/transcription`,
+    noStore,
+  );
 }
 
 export function startTranscription(meetingId: string, recordingId: string) {
@@ -118,7 +131,10 @@ export function fetchTranscriptPage(meetingId: string, recordingId: string, curs
 }
 
 export function fetchIntelligence(meetingId: string, recordingId: string) {
-  return apiFetch<IntelligenceResponse>(`/meetings/${meetingId}/recordings/${recordingId}/intelligence`, noStore);
+  return apiFetch<IntelligenceResponse>(
+    `/meetings/${meetingId}/recordings/${recordingId}/intelligence`,
+    noStore,
+  );
 }
 
 export function startIntelligence(meetingId: string, recordingId: string) {
@@ -150,23 +166,31 @@ export function reviewActionItem(
   action: "approve" | "edit" | "reject",
   fields: { title?: string; detail?: string; dueDateText?: string },
 ) {
-  return apiFetch<{ item: ActionItem; resumed: boolean }>(`/meetings/${meetingId}/action-items/${item.id}`, {
-    ...noStore,
-    method: "PATCH",
-    body: {
-      action,
-      version: item.version,
-      ...(fields.title !== undefined ? { title: fields.title } : {}),
-      ...(fields.detail !== undefined ? { detail: fields.detail } : {}),
-      ...(fields.dueDateText !== undefined ? { dueDateText: fields.dueDateText } : {}),
-      ...(action === "approve" ? { confirmUnassigned: true } : {}),
+  return apiFetch<{ item: ActionItem; resumed: boolean }>(
+    `/meetings/${meetingId}/action-items/${item.id}`,
+    {
+      ...noStore,
+      method: "PATCH",
+      body: {
+        action,
+        version: item.version,
+        ...(fields.title !== undefined ? { title: fields.title } : {}),
+        ...(fields.detail !== undefined ? { detail: fields.detail } : {}),
+        ...(fields.dueDateText !== undefined ? { dueDateText: fields.dueDateText } : {}),
+        ...(action === "approve" ? { confirmUnassigned: true } : {}),
+      },
     },
-  });
+  );
 }
 
 export function createActionTask(meetingId: string, item: ActionItem) {
-  return apiFetch<{ task: { id: string; title: string; status: string }; item: ActionItem; resumed: boolean }>(
-    `/meetings/${meetingId}/action-items/${item.id}/task`,
-    { ...noStore, method: "POST", body: {} },
-  );
+  return apiFetch<{
+    task: { id: string; title: string; status: string };
+    item: ActionItem;
+    resumed: boolean;
+  }>(`/meetings/${meetingId}/action-items/${item.id}/task`, {
+    ...noStore,
+    method: "POST",
+    body: {},
+  });
 }

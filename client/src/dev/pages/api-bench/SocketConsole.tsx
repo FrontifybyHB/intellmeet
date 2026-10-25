@@ -95,16 +95,10 @@ export function SocketConsole({
         <button type="button" onClick={disconnect}>
           disconnect
         </button>
-        <button
-          type="button"
-          onClick={() => emit("meeting:join", { meetingId })}
-        >
+        <button type="button" onClick={() => emit("meeting:join", { meetingId })}>
           emit meeting:join
         </button>
-        <button
-          type="button"
-          onClick={() => emit("meeting:leave", { meetingId })}
-        >
+        <button type="button" onClick={() => emit("meeting:leave", { meetingId })}>
           emit meeting:leave
         </button>
         <button

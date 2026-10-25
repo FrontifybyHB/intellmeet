@@ -1,12 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { ApiError, clearClientAuthState, setCsrfToken } from "@/shared/api/client";
-import {
-  fetchSession,
-  loginRequest,
-  logoutRequest,
-  registerRequest,
-} from "@/features/auth/api";
+import { fetchSession, loginRequest, logoutRequest, registerRequest } from "@/features/auth/api";
 import type { SafeUser } from "@/features/auth/types";
 import { AuthContext, type AuthState } from "@/features/auth/useAuth";
 
@@ -65,20 +60,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const register = useCallback(
-    async (name: string, email: string, password: string) => {
-      setError(null);
-      try {
-        await registerRequest(name, email, password);
-        // Registration does not auto-login (enumeration-neutral flow):
-        // the user signs in explicitly on the login view.
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Registration failed.");
-        throw err;
-      }
-    },
-    [],
-  );
+  const register = useCallback(async (name: string, email: string, password: string) => {
+    setError(null);
+    try {
+      await registerRequest(name, email, password);
+      // Registration does not auto-login (enumeration-neutral flow):
+      // the user signs in explicitly on the login view.
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Registration failed.");
+      throw err;
+    }
+  }, []);
 
   const logout = useCallback(async () => {
     try {

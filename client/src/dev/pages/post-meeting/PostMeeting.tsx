@@ -91,7 +91,8 @@ export function PostMeeting() {
         }}
       />
       <label>
-        Meeting ID <input value={meetingId} onChange={(event) => setMeetingId(event.target.value)} />
+        Meeting ID{" "}
+        <input value={meetingId} onChange={(event) => setMeetingId(event.target.value)} />
       </label>
       <button type="button" onClick={() => void loadDetail()} disabled={!meetingId}>
         Load detail

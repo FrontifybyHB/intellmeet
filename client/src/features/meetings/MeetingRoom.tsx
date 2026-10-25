@@ -52,7 +52,10 @@ function useMediaQuery(query: string) {
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
-  return target instanceof Element && Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
+  return (
+    target instanceof Element &&
+    Boolean(target.closest("input, textarea, select, [contenteditable='true']"))
+  );
 }
 
 function ParticipantTile({ participant }: { participant: Participant }) {
@@ -98,13 +101,22 @@ function ParticipantTile({ participant }: { participant: Participant }) {
   const showVideo = !!videoTrack && (screenTrack ? true : cameraEnabled);
 
   return (
-    <div className="relative min-h-0 overflow-hidden rounded-xl border border-border bg-muted" data-testid="participant-tile">
+    <div
+      className="relative min-h-0 overflow-hidden rounded-xl border border-border bg-muted"
+      data-testid="participant-tile"
+    >
       {!showVideo ? (
         <div className="grid size-full min-h-44 place-items-center text-3xl font-semibold text-muted-foreground">
           {label.slice(0, 1).toUpperCase()}
         </div>
       ) : (
-        <video ref={videoRef} autoPlay muted={isLocal} playsInline className="size-full min-h-44 object-cover" />
+        <video
+          ref={videoRef}
+          autoPlay
+          muted={isLocal}
+          playsInline
+          className="size-full min-h-44 object-cover"
+        />
       )}
       <audio ref={audioRef} autoPlay />
       <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/80 to-transparent px-3 pt-8 pb-2 text-sm text-white">
@@ -113,7 +125,11 @@ function ParticipantTile({ participant }: { participant: Participant }) {
           {isLocal ? " (You)" : ""}
         </span>
         <span aria-label={participant.isMicrophoneEnabled ? "Microphone on" : "Microphone muted"}>
-          {participant.isMicrophoneEnabled ? <Mic className="size-4" /> : <MicOff className="size-4" />}
+          {participant.isMicrophoneEnabled ? (
+            <Mic className="size-4" />
+          ) : (
+            <MicOff className="size-4" />
+          )}
         </span>
       </div>
     </div>
@@ -222,7 +238,9 @@ export function MeetingRoom() {
   const roomRef = useRef<Room | null>(null);
   const [join, setJoin] = useState<JoinResult | null>(null);
   const [room, setRoom] = useState<Room | null>(null);
-  const [state, setState] = useState<"loading" | "connecting" | "connected" | "ended" | "error">("loading");
+  const [state, setState] = useState<"loading" | "connecting" | "connected" | "ended" | "error">(
+    "loading",
+  );
   const [error, setError] = useState<string | null>(null);
   const [audioBlocked, setAudioBlocked] = useState(false);
   const [panel, setPanel] = useState<Panel>("none");
@@ -244,14 +262,17 @@ export function MeetingRoom() {
     ? [room.localParticipant, ...Array.from(room.remoteParticipants.values())]
     : [];
 
-  const presentation = participants.find(
-    (participant) => Boolean(participant.getTrackPublication(Track.Source.ScreenShare)?.track),
+  const presentation = participants.find((participant) =>
+    Boolean(participant.getTrackPublication(Track.Source.ScreenShare)?.track),
   );
   const gridParticipants = presentation
     ? participants.filter((participant) => participant.identity !== presentation.identity)
     : participants;
   const pageCount = Math.max(1, Math.ceil(gridParticipants.length / GRID_PAGE_SIZE));
-  const visibleParticipants = gridParticipants.slice(page * GRID_PAGE_SIZE, (page + 1) * GRID_PAGE_SIZE);
+  const visibleParticipants = gridParticipants.slice(
+    page * GRID_PAGE_SIZE,
+    (page + 1) * GRID_PAGE_SIZE,
+  );
 
   useEffect(() => {
     setPage((current) => Math.min(current, pageCount - 1));
@@ -264,7 +285,9 @@ export function MeetingRoom() {
     setState("loading");
     setError(null);
     setActionError(null);
-    const connectAttempt = async (allowProviderAuthRetry: boolean): Promise<(() => void) | undefined> => {
+    const connectAttempt = async (
+      allowProviderAuthRetry: boolean,
+    ): Promise<(() => void) | undefined> => {
       if (roomRef.current) return undefined;
       if (!joinPromiseRef.current) {
         const handoff = takeJoinHandoff(id);
@@ -325,7 +348,9 @@ export function MeetingRoom() {
           }),
         onChatMessage: (message) =>
           setChatMessages((current) =>
-            current.some((item) => item.id === message.id) ? current : [...current, message].slice(-100),
+            current.some((item) => item.id === message.id)
+              ? current
+              : [...current, message].slice(-100),
           ),
         onChatReady: (send) => {
           sendChatRef.current = send;
@@ -342,7 +367,12 @@ export function MeetingRoom() {
         onPermissions: (event) => {
           if (event.userId === next.localParticipant.identity) {
             setJoin((current) =>
-              current ? { ...current, permissions: { ...current.permissions, canRecord: event.canRecord } } : current,
+              current
+                ? {
+                    ...current,
+                    permissions: { ...current.permissions, canRecord: event.canRecord },
+                  }
+                : current,
             );
           }
         },
@@ -461,7 +491,9 @@ export function MeetingRoom() {
         <span data-testid="meeting-id" className="sr-only">
           {id}
         </span>
-        <LoadingState label={state === "loading" ? "Preparing your meeting…" : "Connecting to the meeting…"} />
+        <LoadingState
+          label={state === "loading" ? "Preparing your meeting…" : "Connecting to the meeting…"}
+        />
       </div>
     );
   }
@@ -474,9 +506,16 @@ export function MeetingRoom() {
           message="The call has ended."
           action={
             user && id ? (
-              <Button type="button" onClick={() => navigate(meetingResultsPath(id), { replace: true })}>View results</Button>
+              <Button
+                type="button"
+                onClick={() => navigate(meetingResultsPath(id), { replace: true })}
+              >
+                View results
+              </Button>
             ) : (
-              <Button type="button" onClick={() => navigate("/", { replace: true })}>Return home</Button>
+              <Button type="button" onClick={() => navigate("/", { replace: true })}>
+                Return home
+              </Button>
             )
           }
           className="w-full max-w-lg"
@@ -491,7 +530,11 @@ export function MeetingRoom() {
         <span data-testid="meeting-id" className="sr-only">
           {id}
         </span>
-        <ErrorState title="Meeting unavailable" message={error || "The meeting could not be connected."} action={<Button onClick={() => void reconnect()}>Try again</Button>} />
+        <ErrorState
+          title="Meeting unavailable"
+          message={error || "The meeting could not be connected."}
+          action={<Button onClick={() => void reconnect()}>Try again</Button>}
+        />
       </div>
     );
   }
@@ -507,15 +550,25 @@ export function MeetingRoom() {
       <CardContent className="flex h-full flex-col gap-3 p-4">
         <div className="flex items-center justify-between">
           <p className="font-semibold">Chat</p>
-          <Button type="button" variant="ghost" size="icon" onClick={() => setPanel("none")} aria-label="Close chat">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => setPanel("none")}
+            aria-label="Close chat"
+          >
             <X className="size-4" />
           </Button>
         </div>
         <div className="flex-1 space-y-2 overflow-y-auto" aria-live="polite">
-          {chatMessages.length === 0 ? <p className="text-sm text-muted-foreground">No messages yet.</p> : null}
+          {chatMessages.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No messages yet.</p>
+          ) : null}
           {chatMessages.map((message) => (
             <p key={message.id} className="rounded-lg bg-muted px-3 py-2 text-sm">
-              <span className="mr-2 text-xs text-muted-foreground">{message.senderName?.trim() || "Participant"}</span>
+              <span className="mr-2 text-xs text-muted-foreground">
+                {message.senderName?.trim() || "Participant"}
+              </span>
               {message.text}
             </p>
           ))}
@@ -526,14 +579,22 @@ export function MeetingRoom() {
             event.preventDefault();
             const text = chatText.trim();
             if (text && !sendChatRef.current) {
-              setActionError("Chat is connecting. Wait for the connection, then try sending again.");
+              setActionError(
+                "Chat is connecting. Wait for the connection, then try sending again.",
+              );
               return;
             }
             if (text && sendChatRef.current && !chatSending) {
               setChatSending(true);
-              void sendChatRef.current(text)
-                .then(() => { setChatText((current) => current === text ? "" : current); setActionError(null); })
-                .catch((err) => setActionError(err instanceof Error ? err.message : "Message was not sent."))
+              void sendChatRef
+                .current(text)
+                .then(() => {
+                  setChatText((current) => (current === text ? "" : current));
+                  setActionError(null);
+                })
+                .catch((err) =>
+                  setActionError(err instanceof Error ? err.message : "Message was not sent."),
+                )
                 .finally(() => setChatSending(false));
             }
           }}
@@ -549,8 +610,16 @@ export function MeetingRoom() {
             Send
           </Button>
         </form>
-        {!chatReady ? <p role="status" className="text-xs text-muted-foreground">Connecting chat…</p> : null}
-        {actionError ? <p role="alert" className="text-xs text-destructive">{actionError}</p> : null}
+        {!chatReady ? (
+          <p role="status" className="text-xs text-muted-foreground">
+            Connecting chat…
+          </p>
+        ) : null}
+        {actionError ? (
+          <p role="alert" className="text-xs text-destructive">
+            {actionError}
+          </p>
+        ) : null}
       </CardContent>
     </Card>
   );
@@ -560,20 +629,37 @@ export function MeetingRoom() {
       <CardContent className="flex h-full flex-col gap-3 p-4">
         <div className="flex items-center justify-between">
           <p className="font-semibold">Participants ({participants.length})</p>
-          <Button type="button" variant="ghost" size="icon" onClick={() => setPanel("none")} aria-label="Close participants">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => setPanel("none")}
+            aria-label="Close participants"
+          >
             <X className="size-4" />
           </Button>
         </div>
         <div className="flex-1 space-y-2 overflow-y-auto">
           {participants.map((participant) => (
-            <div key={participant.identity} className="flex items-center justify-between rounded-lg bg-muted px-3 py-2 text-sm">
+            <div
+              key={participant.identity}
+              className="flex items-center justify-between rounded-lg bg-muted px-3 py-2 text-sm"
+            >
               <span className="truncate">
                 {participant.name?.trim() || "Participant"}
                 {participant.isLocal ? " (You)" : ""}
               </span>
               <span className="flex items-center gap-2 text-muted-foreground">
-                {participant.isMicrophoneEnabled ? <Mic className="size-4" /> : <MicOff className="size-4" />}
-                {participant.isCameraEnabled ? <Camera className="size-4" /> : <CameraOff className="size-4" />}
+                {participant.isMicrophoneEnabled ? (
+                  <Mic className="size-4" />
+                ) : (
+                  <MicOff className="size-4" />
+                )}
+                {participant.isCameraEnabled ? (
+                  <Camera className="size-4" />
+                ) : (
+                  <CameraOff className="size-4" />
+                )}
               </span>
             </div>
           ))}
@@ -587,12 +673,22 @@ export function MeetingRoom() {
       <CardContent className="flex h-full flex-col gap-3 p-4">
         <div className="flex items-center justify-between">
           <p className="font-semibold">Recording</p>
-          <Button type="button" variant="ghost" size="icon" onClick={() => setPanel("none")} aria-label="Close recording">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => setPanel("none")}
+            aria-label="Close recording"
+          >
             <X className="size-4" />
           </Button>
         </div>
         <div className="flex-1 overflow-y-auto">
-          <RecordingPanel meetingId={id!} isHost={join.permissions.isHost} canRecord={join.permissions.canRecord} />
+          <RecordingPanel
+            meetingId={id!}
+            isHost={join.permissions.isHost}
+            canRecord={join.permissions.canRecord}
+          />
         </div>
       </CardContent>
     </Card>
@@ -603,7 +699,13 @@ export function MeetingRoom() {
       <CardContent className="flex h-full flex-col gap-3 p-4">
         <div className="flex items-center justify-between">
           <p className="font-semibold">Results</p>
-          <Button type="button" variant="ghost" size="icon" onClick={() => setPanel("none")} aria-label="Close results">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => setPanel("none")}
+            aria-label="Close results"
+          >
             <X className="size-4" />
           </Button>
         </div>
@@ -644,8 +746,11 @@ export function MeetingRoom() {
               <Headphones /> Enable meeting audio
             </Button>
           ) : null}
-          {(error || actionError) ? (
-            <p role="alert" className="rounded-lg border border-red-400/30 bg-red-950/40 px-3 py-2 text-sm text-red-200">
+          {error || actionError ? (
+            <p
+              role="alert"
+              className="rounded-lg border border-red-400/30 bg-red-950/40 px-3 py-2 text-sm text-red-200"
+            >
               {actionError || error}
             </p>
           ) : null}
@@ -653,19 +758,32 @@ export function MeetingRoom() {
             {viewMode === "screen" && !presentation ? (
               <div className="grid size-full min-h-56 place-items-center rounded-xl border border-dashed border-border bg-muted/40 p-6 text-center">
                 <div>
-                  <MonitorUp className="mx-auto mb-2 size-8 text-muted-foreground" aria-hidden="true" />
+                  <MonitorUp
+                    className="mx-auto mb-2 size-8 text-muted-foreground"
+                    aria-hidden="true"
+                  />
                   <p className="font-medium">No presentation is being shared</p>
-                  <p className="mt-1 text-sm text-muted-foreground">Ask a participant to share their screen.</p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Ask a participant to share their screen.
+                  </p>
                 </div>
               </div>
             ) : viewMode === "speaker" ? (
               <div className="flex size-full min-h-56 flex-col gap-3">
-                {speakerParticipant ? <div className="min-h-0 flex-1"><ParticipantTile participant={speakerParticipant} /></div> : null}
+                {speakerParticipant ? (
+                  <div className="min-h-0 flex-1">
+                    <ParticipantTile participant={speakerParticipant} />
+                  </div>
+                ) : null}
                 {participants.length > 1 ? (
                   <div className="grid h-24 shrink-0 grid-flow-col auto-cols-[9rem] gap-3 overflow-x-auto pb-1">
-                    {participants.filter((participant) => participant.identity !== speakerParticipant?.identity).map((participant) => (
-                      <ParticipantTile key={participant.identity} participant={participant} />
-                    ))}
+                    {participants
+                      .filter(
+                        (participant) => participant.identity !== speakerParticipant?.identity,
+                      )
+                      .map((participant) => (
+                        <ParticipantTile key={participant.identity} participant={participant} />
+                      ))}
                   </div>
                 ) : null}
               </div>
@@ -683,7 +801,12 @@ export function MeetingRoom() {
                 ) : null}
               </div>
             ) : (
-              <div className={cn("grid size-full min-h-56 auto-rows-fr gap-3", getGridClass(visibleParticipants.length))}>
+              <div
+                className={cn(
+                  "grid size-full min-h-56 auto-rows-fr gap-3",
+                  getGridClass(visibleParticipants.length),
+                )}
+              >
                 {visibleParticipants.map((participant) => (
                   <ParticipantTile key={participant.identity} participant={participant} />
                 ))}
@@ -692,11 +815,25 @@ export function MeetingRoom() {
           </div>
           {!presentation && pageCount > 1 ? (
             <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-              <Button type="button" size="sm" variant="outline" onClick={() => setPage((current) => Math.max(0, current - 1))} disabled={page === 0}>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setPage((current) => Math.max(0, current - 1))}
+                disabled={page === 0}
+              >
                 Previous
               </Button>
-              <span>Page {page + 1} of {pageCount}</span>
-              <Button type="button" size="sm" variant="outline" onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))} disabled={page === pageCount - 1}>
+              <span>
+                Page {page + 1} of {pageCount}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setPage((current) => Math.min(pageCount - 1, current + 1))}
+                disabled={page === pageCount - 1}
+              >
                 Next
               </Button>
             </div>
@@ -735,30 +872,65 @@ export function MeetingRoom() {
                 {screenOn ? <MonitorX /> : <MonitorUp />}
               </Button>
             ) : null}
-            <Button type="button" variant={panel === "chat" ? "secondary" : "outline"} onClick={() => setPanel(panel === "chat" ? "none" : "chat")}>
+            <Button
+              type="button"
+              variant={panel === "chat" ? "secondary" : "outline"}
+              onClick={() => setPanel(panel === "chat" ? "none" : "chat")}
+            >
               <MessageCircle /> Chat
             </Button>
-            <Button type="button" variant={panel === "participants" ? "secondary" : "outline"} onClick={() => setPanel(panel === "participants" ? "none" : "participants")}>
+            <Button
+              type="button"
+              variant={panel === "participants" ? "secondary" : "outline"}
+              onClick={() => setPanel(panel === "participants" ? "none" : "participants")}
+            >
               <Users /> Participants
             </Button>
-            <Button type="button" variant={panel === "recording" ? "secondary" : "outline"} onClick={() => setPanel(panel === "recording" ? "none" : "recording")}>
+            <Button
+              type="button"
+              variant={panel === "recording" ? "secondary" : "outline"}
+              onClick={() => setPanel(panel === "recording" ? "none" : "recording")}
+            >
               Recording
             </Button>
-            <Button type="button" variant={panel === "results" ? "secondary" : "outline"} onClick={() => setPanel(panel === "results" ? "none" : "results")}>
+            <Button
+              type="button"
+              variant={panel === "results" ? "secondary" : "outline"}
+              onClick={() => setPanel(panel === "results" ? "none" : "results")}
+            >
               Results
             </Button>
           </div>
         </section>
         {isDesktop ? (
           <aside className="w-96 shrink-0">
-            {panel === "chat" ? chatPanel : panel === "participants" ? participantsPanel : panel === "recording" ? recordingPanel : panel === "results" ? resultsPanel : null}
+            {panel === "chat"
+              ? chatPanel
+              : panel === "participants"
+                ? participantsPanel
+                : panel === "recording"
+                  ? recordingPanel
+                  : panel === "results"
+                    ? resultsPanel
+                    : null}
           </aside>
         ) : null}
       </main>
-      <Sheet open={!isDesktop && panel !== "none"} onOpenChange={(open) => !open && setPanel("none")}>
+      <Sheet
+        open={!isDesktop && panel !== "none"}
+        onOpenChange={(open) => !open && setPanel("none")}
+      >
         <SheetContent side="right" className="w-full border-border bg-background p-0 sm:max-w-md">
           <div className="h-full p-2">
-            {panel === "chat" ? chatPanel : panel === "participants" ? participantsPanel : panel === "recording" ? recordingPanel : panel === "results" ? resultsPanel : null}
+            {panel === "chat"
+              ? chatPanel
+              : panel === "participants"
+                ? participantsPanel
+                : panel === "recording"
+                  ? recordingPanel
+                  : panel === "results"
+                    ? resultsPanel
+                    : null}
           </div>
         </SheetContent>
       </Sheet>

@@ -30,7 +30,9 @@ export function MeetingResultsPage() {
       .catch((err) => {
         if (!cancelled) setError(describeApiError(err, "Could not load meeting results."));
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [id]);
 
   const remove = async () => {
@@ -45,18 +47,37 @@ export function MeetingResultsPage() {
     }
   };
 
-  if (error) return <ErrorState title="Meeting results unavailable" message={error} action={<Button asChild><Link to={ROUTES.meetings}>Back to meetings</Link></Button>} />;
+  if (error)
+    return (
+      <ErrorState
+        title="Meeting results unavailable"
+        message={error}
+        action={
+          <Button asChild>
+            <Link to={ROUTES.meetings}>Back to meetings</Link>
+          </Button>
+        }
+      />
+    );
   if (!detail) return <LoadingState label="Loading meeting results…" />;
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6">
       <PageHeader
         title={detail.meeting.title || "Untitled meeting"}
-        description={detail.meeting.status === "ended" ? "Recording, transcript, summary and action items." : `Meeting status: ${detail.meeting.status}`}
+        description={
+          detail.meeting.status === "ended"
+            ? "Recording, transcript, summary and action items."
+            : `Meeting status: ${detail.meeting.status}`
+        }
         actions={
           detail.meeting.isHost ? (
             <ConfirmationDialog
-              trigger={<Button type="button" variant="destructive">Delete meeting</Button>}
+              trigger={
+                <Button type="button" variant="destructive">
+                  Delete meeting
+                </Button>
+              }
               title="Delete this meeting?"
               description="This removes the meeting from normal history, blocks future joins and revokes app-level access. Retained media and records are not hard-deleted."
               confirmLabel="Delete meeting"
@@ -67,7 +88,11 @@ export function MeetingResultsPage() {
         }
       />
       {deleteError ? <ErrorState title="Meeting was not deleted" message={deleteError} /> : null}
-      <RecordingPanel meetingId={id} isHost={detail.meeting.isHost} selectedRecordingId={searchParams.get("recording")} />
+      <RecordingPanel
+        meetingId={id}
+        isHost={detail.meeting.isHost}
+        selectedRecordingId={searchParams.get("recording")}
+      />
       <PostMeetingPanel meetingId={id} isHost={detail.meeting.isHost} />
     </div>
   );

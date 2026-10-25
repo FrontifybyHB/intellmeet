@@ -12,7 +12,11 @@ import { useAsyncAction } from "@/shared/hooks/useAsyncAction";
 /**
  * Title-only meeting creation: shows the returned URL with copy + fallback.
  */
-export function CreateMeeting({ onCreated }: { onCreated?: (meeting: { meetingId: string; joinUrl: string }) => void }) {
+export function CreateMeeting({
+  onCreated,
+}: {
+  onCreated?: (meeting: { meetingId: string; joinUrl: string }) => void;
+}) {
   const [title, setTitle] = useState("");
   const [result, setResult] = useState<{ meetingId: string; joinUrl: string } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -99,7 +103,9 @@ export function CreateMeeting({ onCreated }: { onCreated?: (meeting: { meetingId
         <Card>
           <CardHeader>
             <h2 className="text-lg font-semibold tracking-tight">Your meeting is ready</h2>
-            <CardDescription>Share the persisted invite, or open the lobby to join it yourself.</CardDescription>
+            <CardDescription>
+              Share the persisted invite, or open the lobby to join it yourself.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <p
@@ -109,11 +115,21 @@ export function CreateMeeting({ onCreated }: { onCreated?: (meeting: { meetingId
               {result.joinUrl}
             </p>
             <div className="flex flex-wrap items-center gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={() => void copy(result.joinUrl, "Link")}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void copy(result.joinUrl, "Link")}
+              >
                 <Copy aria-hidden="true" />
                 Copy link
               </Button>
-              <Button type="button" variant="outline" size="sm" onClick={() => void copy(invitation, "Invitation")}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void copy(invitation, "Invitation")}
+              >
                 <Copy aria-hidden="true" />
                 Copy invitation
               </Button>
@@ -123,9 +139,16 @@ export function CreateMeeting({ onCreated }: { onCreated?: (meeting: { meetingId
                   Open lobby
                 </a>
               </Button>
-              {copied && <span role="status" className="text-sm text-muted-foreground">{copied}</span>}
+              {copied && (
+                <span role="status" className="text-sm text-muted-foreground">
+                  {copied}
+                </span>
+              )}
             </div>
-            <p className="whitespace-pre-wrap rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground" data-testid="invitation-text">
+            <p
+              className="whitespace-pre-wrap rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground"
+              data-testid="invitation-text"
+            >
               {invitation}
             </p>
           </CardContent>

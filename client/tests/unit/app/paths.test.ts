@@ -47,7 +47,9 @@ describe("resolveRedirectTarget", () => {
 
   it("falls back to the authenticated home route for unsafe or missing state", () => {
     expect(resolveRedirectTarget({ from: "//evil.example.com" })).toBe(ROUTES.authenticatedHome);
-    expect(resolveRedirectTarget({ from: "https://evil.example.com" })).toBe(ROUTES.authenticatedHome);
+    expect(resolveRedirectTarget({ from: "https://evil.example.com" })).toBe(
+      ROUTES.authenticatedHome,
+    );
     expect(resolveRedirectTarget({})).toBe(ROUTES.authenticatedHome);
     expect(resolveRedirectTarget(null)).toBe(ROUTES.authenticatedHome);
     expect(resolveRedirectTarget(undefined)).toBe(ROUTES.authenticatedHome);

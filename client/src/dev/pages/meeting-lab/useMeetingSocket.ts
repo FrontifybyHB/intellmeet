@@ -20,11 +20,7 @@ export interface ChatMessage {
   createdAt?: string;
 }
 
-export type SocketState =
-  | "disconnected"
-  | "connected"
-  | "meeting-ended"
-  | "revoked";
+export type SocketState = "disconnected" | "connected" | "meeting-ended" | "revoked";
 
 export interface MeetingSocketController {
   state: SocketState;

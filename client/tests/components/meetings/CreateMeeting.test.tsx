@@ -24,9 +24,16 @@ describe("CreateMeeting", () => {
     await user.type(screen.getByLabelText(/title/i), "Design review");
     await user.click(screen.getByRole("button", { name: /create & get link/i }));
 
-    expect(await screen.findByTestId("join-url")).toHaveTextContent("https://app.example.com/join/invite-code");
-    expect(screen.getByTestId("invitation-text")).toHaveTextContent("You're invited to \"Design review\"");
+    expect(await screen.findByTestId("join-url")).toHaveTextContent(
+      "https://app.example.com/join/invite-code",
+    );
+    expect(screen.getByTestId("invitation-text")).toHaveTextContent(
+      'You\'re invited to "Design review"',
+    );
     expect(screen.getByRole("button", { name: /copy invitation/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /open lobby/i })).toHaveAttribute("href", "https://app.example.com/join/invite-code");
+    expect(screen.getByRole("link", { name: /open lobby/i })).toHaveAttribute(
+      "href",
+      "https://app.example.com/join/invite-code",
+    );
   });
 });
