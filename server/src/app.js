@@ -3,7 +3,9 @@ const express = require("express");
 const helmet = require("helmet");
 
 const { getEnv } = require("./config/env");
+const connectDB = require("./config/db");
 const AppError = require("./utils/AppError");
+const { HTTP_STATUS } = require("./constants/httpStatus");
 const asyncHandler = require("./utils/asyncHandler");
 const errorHandler = require("./middleware/errorHandler");
 const notFound = require("./middleware/notFound");
@@ -72,16 +74,34 @@ app.get(
   })
 );
 
-app.use("/api/meetings", meetingsRoutes);
-app.use("/api/meeting-links", meetingLinksRoutes);
-app.use("/api/auth", authRoutes);
+// The regular Node server connects before listening. Vercel imports this
+// Express app directly, so establish one shared connection on the first API
+// request instead of letting Mongoose buffer User queries for 10 seconds.
+const requireDatabase = asyncHandler(async (_req, _res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (_unused) {
+    next(
+      new AppError(
+        HTTP_STATUS.SERVICE_UNAVAILABLE,
+        "Database temporarily unavailable. Please retry shortly.",
+        "DATABASE_UNAVAILABLE"
+      )
+    );
+  }
+});
+
+app.use("/api/meetings", requireDatabase, meetingsRoutes);
+app.use("/api/meeting-links", requireDatabase, meetingLinksRoutes);
+app.use("/api/auth", requireDatabase, authRoutes);
 // Provider webhooks verify by signature over raw bytes (route-scoped
 // raw parser inside the router) — never user JWT/CSRF auth.
-app.use("/api/webhooks", webhooksRoutes);
+app.use("/api/webhooks", requireDatabase, webhooksRoutes);
 // The contract lab is useful in development/test, but must not exist on the
 // production route surface even behind authentication.
 if (nodeEnv !== "production") {
-  app.use("/dev", devLabRoutes);
+  app.use("/dev", requireDatabase, devLabRoutes);
 }
 
 app.use(notFound);

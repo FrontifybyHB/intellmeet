@@ -5,7 +5,15 @@ const mongoose = require("mongoose");
 const { getEnv } = require("./env");
 const logger = require("./logger");
 
+let connecting = null;
+
 async function connectDB() {
+  if (mongoose.connection.readyState === 1) {
+    return mongoose.connection;
+  }
+  if (connecting) {
+    return connecting;
+  }
   const {
     mongoUri,
     mongoMaxPoolSize,
@@ -20,12 +28,20 @@ async function connectDB() {
   // own attempt — no unlimited background work is left running. Raise
   // MONGO_MAX_POOL_SIZE only with measured connection-queue pressure and
   // only within total-replica limits.
-  await mongoose.connect(mongoUri, {
-    maxPoolSize: mongoMaxPoolSize,
-    serverSelectionTimeoutMS: mongoServerSelectionTimeoutMs,
-    socketTimeoutMS: mongoSocketTimeoutMs,
-  });
-  logger.info("db_connected", {});
+  connecting = mongoose
+    .connect(mongoUri, {
+      maxPoolSize: mongoMaxPoolSize,
+      serverSelectionTimeoutMS: mongoServerSelectionTimeoutMs,
+      socketTimeoutMS: mongoSocketTimeoutMs,
+    })
+    .then(() => {
+      logger.info("db_connected", {});
+      return mongoose.connection;
+    })
+    .finally(() => {
+      connecting = null;
+    });
+  return connecting;
 }
 
 module.exports = connectDB;
