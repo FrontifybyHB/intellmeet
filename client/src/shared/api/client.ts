@@ -177,8 +177,7 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   // CSRF rejections happen before the route handler runs, so one retry is
   // safe and heals a stale in-memory token after a deployment or cookie reset.
   if (isWrite(method) && res.status === 403 && CSRF_ERROR_CODES.has(err.code)) {
-    await fetchCsrf(options.signal);
-    headers["x-csrf-token"] = csrfToken;
+    headers["x-csrf-token"] = await fetchCsrf(options.signal);
     res = await run();
     if (res.ok) return (await res.json()) as T;
     err = await readError(res);

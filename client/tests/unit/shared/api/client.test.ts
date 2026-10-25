@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, apiFetch, clearClientAuthState } from "@/shared/api/client";
+import { apiFetch, clearClientAuthState } from "@/shared/api/client";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -31,7 +31,7 @@ describe("apiFetch CSRF handling", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const request = apiFetch("/auth/login", { method: "POST", body: {} });
-    await expect(request).rejects.toMatchObject<Partial<ApiError>>({
+    await expect(request).rejects.toMatchObject({
       status: 503,
       code: "DATABASE_UNAVAILABLE",
     });
