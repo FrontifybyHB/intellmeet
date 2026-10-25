@@ -123,6 +123,7 @@ export function refreshAuthForRealtime(): Promise<boolean> {
 }
 
 const REFRESHABLE_CODES = new Set(["UNAUTHORIZED", "SESSION_EXPIRED"]);
+const CSRF_ERROR_CODES = new Set(["CSRF_REQUIRED", "CSRF_INVALID"]);
 
 export interface ApiFetchOptions {
   method?: string;
@@ -151,11 +152,9 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   // every unsafe method, even bodyless POSTs (join/start/stop/end).
   if (isWrite(method)) {
     if (!csrfToken) {
-      try {
-        await fetchCsrf(options.signal);
-      } catch {
-        // CSRF bootstrap failure surfaces as the request error below.
-      }
+      // Do not send an unprotected request after bootstrap fails: its
+      // guaranteed 403 hides the real bootstrap/network failure.
+      await fetchCsrf(options.signal);
     }
     if (csrfToken) {
       headers["x-csrf-token"] = csrfToken;
@@ -174,7 +173,16 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   let res = await run();
   if (res.ok) return (await res.json()) as T;
 
-  const err = await readError(res);
+  let err = await readError(res);
+  // CSRF rejections happen before the route handler runs, so one retry is
+  // safe and heals a stale in-memory token after a deployment or cookie reset.
+  if (isWrite(method) && res.status === 403 && CSRF_ERROR_CODES.has(err.code)) {
+    await fetchCsrf(options.signal);
+    headers["x-csrf-token"] = csrfToken;
+    res = await run();
+    if (res.ok) return (await res.json()) as T;
+    err = await readError(res);
+  }
   // Bounded refresh: only on expired-auth signals, never for the auth
   // endpoints themselves (login/register/refresh must not recurse), and
   // never on 403/503.
