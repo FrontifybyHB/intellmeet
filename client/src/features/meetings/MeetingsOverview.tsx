@@ -1,7 +1,7 @@
 // Meetings index content. Search/filter controls are intentionally absent:
 // the current history contract exposes only cursor pagination.
 
-import { Plus, Video } from "lucide-react";
+import { CalendarClock, CircleCheck, Copy, ExternalLink, Plus, Radio, Video } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -10,14 +10,32 @@ import { ErrorState } from "@/shared/ui/ErrorState";
 import { LoadingState } from "@/shared/ui/LoadingState";
 import { PageHeader } from "@/shared/ui/PageHeader";
 import { Button } from "@/shared/ui/button";
-import { ROUTES, meetingResultsPath } from "@/app/paths";
+import { ROUTES, meetingPath, meetingResultsPath } from "@/app/paths";
 import { describeApiError } from "@/shared/api/errors";
 import { fetchMeetingHistory, type MeetingHistoryRow } from "@/features/meetings/api";
 
 function dateLabel(value: string | null): string {
-  if (!value) return "No end date";
+  if (!value) return "Time unavailable";
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "No end date" : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? "Time unavailable" : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+function statusMeta(status: string) {
+  switch (status) {
+    case "live":
+    case "active":
+    case "in_progress":
+      return { label: "Live", icon: Radio, className: "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" };
+    case "scheduled":
+    case "upcoming":
+      return { label: "Scheduled", icon: CalendarClock, className: "border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-300" };
+    case "ended":
+      return { label: "Completed", icon: CircleCheck, className: "border-border bg-muted text-muted-foreground" };
+    case "cancelled":
+      return { label: "Cancelled", icon: CircleCheck, className: "border-destructive/25 bg-destructive/5 text-destructive" };
+    default:
+      return { label: status.replace(/[-_]/g, " "), icon: Video, className: "border-border bg-muted text-muted-foreground" };
+  }
 }
 
 export function MeetingsOverview() {
@@ -67,6 +85,15 @@ export function MeetingsOverview() {
     }
   };
 
+  const copyMeetingLink = async (meetingId: string) => {
+    const url = `${window.location.origin}${meetingPath(meetingId)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      // The authenticated detail route is still available as the visible action.
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -100,31 +127,35 @@ export function MeetingsOverview() {
       ) : null}
       {!loading && !error && meetings.length > 0 ? (
         <div className="space-y-3" aria-label="Meeting history">
-          {meetings.map((meeting) => (
-            <Link
-              key={meeting.id}
-              to={
-                meeting.status === "ended"
-                  ? meetingResultsPath(meeting.id)
-                  : `${ROUTES.meetings}/${meeting.id}`
-              }
-              className="block rounded-xl border bg-card p-4 shadow-sm transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h2 className="truncate font-semibold">{meeting.title || "Untitled meeting"}</h2>
-                  <p className="mt-1 text-sm text-muted-foreground">{dateLabel(meeting.endedAt)}</p>
+          {meetings.map((meeting) => {
+            const meta = statusMeta(meeting.status);
+            const Icon = meta.icon;
+            const ended = meeting.status === "ended";
+            const inactive = meeting.status === "cancelled";
+            const destination = ended ? meetingResultsPath(meeting.id) : meetingPath(meeting.id);
+            const time = ended ? meeting.endedAt : meeting.scheduledAt;
+            return (
+              <article key={meeting.id} className="rounded-2xl border border-border bg-card p-4 shadow-sm transition-colors hover:border-primary/30 sm:p-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="min-w-0 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="max-w-full break-words text-base font-semibold">{meeting.title || "Untitled meeting"}</h2>
+                      <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${meta.className}`}><Icon aria-hidden="true" className="size-3.5" />{meta.label}</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{ended ? "Ended" : meeting.status === "scheduled" ? "Starts" : "Meeting time"}: {dateLabel(time)}</p>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      <span>{meeting.isHost ? "You are the host" : "You are a participant"}</span>
+                      <span>{ended ? "Results may include recording and AI processing status." : inactive ? "This meeting is unavailable." : "Open details for admission and room status."}</span>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    {!ended && !inactive ? <Button type="button" variant="outline" size="sm" aria-label={`Copy internal meeting link for ${meeting.title || "meeting"}`} onClick={() => void copyMeetingLink(meeting.id)}><Copy aria-hidden="true" className="size-4" /><span className="hidden sm:inline">Copy link</span></Button> : null}
+                    <Button asChild size="sm" variant={ended ? "outline" : "default"}><Link aria-label={`${meeting.title || "Untitled meeting"}: ${ended ? "view results" : inactive ? "view details" : "open meeting"}`} to={destination}>{ended ? "View results" : inactive ? "View details" : "Open meeting"}<ExternalLink aria-hidden="true" className="size-4" /></Link></Button>
+                  </div>
                 </div>
-                <span className="rounded-full border px-2.5 py-1 text-xs font-medium capitalize">
-                  {meeting.status}
-                </span>
-              </div>
-              <p className="mt-3 text-xs text-muted-foreground">
-                {meeting.isHost ? "Host" : "Participant"} ·{" "}
-                {meeting.status === "ended" ? "View results" : "Open meeting"}
-              </p>
-            </Link>
-          ))}
+              </article>
+            );
+          })}
           {hasMore ? (
             <Button
               type="button"

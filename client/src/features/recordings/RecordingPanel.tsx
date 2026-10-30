@@ -217,17 +217,14 @@ export function RecordingPanel({
               </Badge>
             </div>
             <p className="text-xs text-muted-foreground">
-              Stored separately from your recording decision and never inferred from it.
-              {!recordingDecision
-                ? " Decide on recording first — the server records both answers together."
-                : ""}
+              Stored separately from recording acknowledgement and never inferred from it.
             </p>
             <div className="flex flex-wrap gap-2">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => void saveAiTransfer("approved")}
-                disabled={!recordingDecision || aiBusy || busy === "consent"}
+                disabled={aiBusy || busy === "consent"}
                 data-testid="consent-ai-approve"
               >
                 Allow AI processing
@@ -236,7 +233,7 @@ export function RecordingPanel({
                 variant="outline"
                 size="sm"
                 onClick={() => void saveAiTransfer("declined")}
-                disabled={!recordingDecision || aiBusy || busy === "consent"}
+                disabled={aiBusy || busy === "consent"}
                 data-testid="consent-ai-decline"
               >
                 Don&apos;t allow
@@ -245,7 +242,7 @@ export function RecordingPanel({
                 variant="ghost"
                 size="sm"
                 onClick={() => void saveAiTransfer("undecided")}
-                disabled={!recordingDecision || aiBusy || busy === "consent"}
+                disabled={aiBusy || busy === "consent"}
                 data-testid="consent-ai-reset"
               >
                 Leave undecided
@@ -260,8 +257,8 @@ export function RecordingPanel({
           <CardHeader>
             <CardTitle>{isHost ? "Owner controls" : "Recording controls"}</CardTitle>
             <CardDescription>
-              Starting a recording requires the consent approval of every participant. The server
-              enforces your meeting-scoped recording permission and the consent gate.
+              Only the meeting host can start or stop recording. Participants are notified and
+              may independently choose whether their content can be used for AI processing.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

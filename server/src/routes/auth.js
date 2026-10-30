@@ -24,6 +24,11 @@ const express = require("express");
 const { AUTH_LIMITS } = require("../constants/authLimits");
 
 const router = express.Router();
+router.use((_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.setHeader("Pragma", "no-cache");
+  next();
+});
 
 // Logout with no credentials at all (already-logged-out browser) is a
 // trivial success: with no ambient authority there is no CSRF exposure,

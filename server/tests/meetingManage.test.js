@@ -174,4 +174,22 @@ describe("provisional meeting management", () => {
       400
     );
   });
+
+  it("keeps future meetings scheduled until their host starts them", async () => {
+    const hostId = new mongoose.Types.ObjectId();
+    await ensureUsers([hostId]);
+    const token = signAuthToken(hostId.toString());
+    const scheduledAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const created = await api("POST", "/api/meetings", token, {
+      title: "scheduled demo",
+      scheduledAt,
+      timezone: "Asia/Kolkata",
+    });
+    assert.equal(created.status, 201);
+    assert.equal(created.json.status, "scheduled");
+    assert.equal((await api("POST", `/api/meetings/${created.json.id}/join`, token, {})).status, 409);
+    const started = await api("POST", `/api/meetings/${created.json.id}/start`, token, {});
+    assert.equal(started.status, 200);
+    assert.equal(started.json.meeting.status, "live");
+  });
 });

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Clock3, FileAudio, RefreshCw, Video } from "lucide-react";
+import { AlertTriangle, Clock3, FileAudio, RefreshCw, Video } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { fetchMeetingHistory, type MeetingHistoryRow } from "@/features/meetings/api";
@@ -12,6 +12,7 @@ import { PageHeader } from "@/shared/ui/PageHeader";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { ROUTES, meetingResultsPath } from "@/app/paths";
+import { recordingPhase, recordingPhaseLabel } from "@/features/recordings/state";
 
 type RecordingRow = { meeting: MeetingHistoryRow; recording: Recording };
 
@@ -28,8 +29,18 @@ function formatDuration(durationMs: number | null): string | null {
   return `${minutes}m ${seconds.toString().padStart(2, "0")}s`;
 }
 
-function recordingLabel(state: Recording["state"]): string {
-  return state === "ready" ? "Ready" : state.charAt(0).toUpperCase() + state.slice(1);
+function recordingTone(state: Recording["state"]): string {
+  switch (recordingPhase(state)) {
+    case "recording":
+      return "border-red-500/25 bg-red-500/10 text-red-700 dark:text-red-300";
+    case "ready":
+      return "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+    case "failed":
+    case "aborted":
+      return "border-destructive/25 bg-destructive/5 text-destructive";
+    default:
+      return "border-sky-500/25 bg-sky-500/10 text-sky-700 dark:text-sky-300";
+  }
 }
 
 export function RecordingsOverview() {
@@ -178,7 +189,7 @@ export function RecordingsOverview() {
           </div>
           <section className="space-y-3" aria-label="Recording history">
             {rows.map(({ meeting, recording }) => (
-              <Card key={recording.id}>
+              <Card key={recording.id} className="overflow-hidden">
                 <CardContent className="flex flex-wrap items-center justify-between gap-4 p-5">
                   <div className="min-w-0 space-y-1">
                     <Link
@@ -188,8 +199,8 @@ export function RecordingsOverview() {
                       {meeting.title || "Untitled meeting"}
                     </Link>
                     <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                      <span className="rounded-full border px-2 py-0.5 text-xs font-medium">
-                        {recordingLabel(recording.state)}
+                      <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${recordingTone(recording.state)}`}>
+                        {recordingPhaseLabel(recording.state)}
                       </span>
                       <span>{formatTimestamp(recording.createdAt)}</span>
                       {formatDuration(recording.output?.durationMs ?? null) ? (
@@ -199,10 +210,16 @@ export function RecordingsOverview() {
                         </span>
                       ) : null}
                     </p>
+                    {recording.state === "ready" && !recording.output ? (
+                      <p className="flex items-center gap-1 text-xs text-warning"><AlertTriangle aria-hidden="true" className="size-3.5" />Output verification is incomplete; playback remains unavailable.</p>
+                    ) : null}
+                    {recording.state === "failed" || recording.state === "aborted" ? (
+                      <p className="text-xs text-destructive">This attempt did not produce an available recording. Open meeting results for the server-reported reason.</p>
+                    ) : null}
                   </div>
                   <Button asChild variant="outline">
                     <Link to={meetingResultsPath(meeting.id)}>
-                      {recording.state === "ready" ? "Open recording" : "Open meeting"}
+                      {recording.state === "ready" && recording.output ? "Open recording" : "View status"}
                     </Link>
                   </Button>
                 </CardContent>

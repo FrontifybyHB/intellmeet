@@ -40,8 +40,8 @@ const {
 } = require("../controllers/meetingHistoryController");
 const {
   createMeetingHandler,
+  startScheduledMeetingHandler,
   admitMemberHandler,
-  setRecordingPermissionHandler,
 } = require("../controllers/meetingManageController");
 
 const router = express.Router();
@@ -50,8 +50,8 @@ const router = express.Router();
 // flow is exercisable (create → share id → join → …). Team meeting
 // CRUD owns the canonical contract; this defers to it when it lands.
 router.post("/", requireAuth, csrfProtect, createMeetingHandler);
+router.post("/:id/start", requireAuth, csrfProtect, startScheduledMeetingHandler);
 router.post("/:id/members", requireAuth, csrfProtect, admitMemberHandler);
-router.patch("/:id/members/:userId/recording-permission", requireAuth, csrfProtect, setRecordingPermissionHandler);
 
 // Phase 6: entitled post-meeting reads. History lists hosted/admitted
 // meetings (projected summaries, cursor pages); detail returns status

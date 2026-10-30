@@ -21,6 +21,9 @@ const meetingSchema = new mongoose.Schema(
       index: true,
     },
     scheduledAt: { type: Date },
+    // The instant remains UTC in scheduledAt; this preserves the intended
+    // local zone for display after creation.
+    timezone: { type: String, default: null, maxlength: 100 },
     // Shareable invite identity (task: shareable meeting URLs).
     // joinCode is an opaque CSPRNG capability (16 bytes base64url,
     // >=128 random bits) — never a title slug, timestamp, or

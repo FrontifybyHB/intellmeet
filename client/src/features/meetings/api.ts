@@ -35,6 +35,9 @@ export interface MeetingHistoryPage {
 export interface CreateMeetingResult {
   meetingId: string;
   joinUrl: string;
+  status: "scheduled" | "live";
+  scheduledAt: string | null;
+  timezone: string | null;
 }
 
 export interface JoinResult {
@@ -60,12 +63,15 @@ export function takeJoinHandoff(meetingId: string): JoinResult | null {
   return result;
 }
 
-/** Creates a title-only meeting and returns its share link. */
-export function createMeeting(title: string): Promise<CreateMeetingResult> {
+/** Creates an immediate or scheduled meeting and returns its share link. */
+export function createMeeting(input: { title: string; scheduledAt?: string; timezone?: string }): Promise<CreateMeetingResult> {
   return apiFetch<CreateMeetingResult>("/meetings", {
     method: "POST",
-    body: { title },
+    body: input,
   });
+}
+export function startScheduledMeeting(meetingId: string): Promise<{ meeting: { id: string; status: "live" } }> {
+  return apiFetch(`/meetings/${meetingId}/start`, { method: "POST", body: {} });
 }
 
 /** Entitled meeting history, newest first, using the server cursor contract. */

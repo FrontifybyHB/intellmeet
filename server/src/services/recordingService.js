@@ -124,16 +124,10 @@ async function requireRecorder({ meetingIdParam, userId }) {
     userId,
   });
   if (!isHost) {
-    const MeetingParticipant = require("../models/MeetingParticipant");
-    const member = await MeetingParticipant.findOne(
-      { meetingId, userId, status: "admitted", canRecord: true },
-      { _id: 1 },
-    ).lean();
-    if (member) return meetingId;
     throw new AppError(
       HTTP_STATUS.FORBIDDEN,
-      "Recording permission is required.",
-      "RECORDING_NOT_ALLOWED",
+      "Only the host can control recording.",
+      "NOT_HOST",
     );
   }
   return meetingId;

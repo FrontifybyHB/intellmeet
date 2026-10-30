@@ -172,7 +172,7 @@ describe("RecordingPanel consent", () => {
     expect(countCalls("GET", "/recording-consent")).toBeGreaterThan(1);
   });
 
-  it("does not offer the AI-transfer control before a recording decision", async () => {
+  it("keeps the AI-transfer choice independent from recording acknowledgement", async () => {
     routeApi({
       [consentPath]: { noticeVersion: "v1", consent: null },
       [listPath]: { recordings: [], hasMore: false },
@@ -180,7 +180,7 @@ describe("RecordingPanel consent", () => {
 
     render(<RecordingPanel meetingId={MEETING_ID} isHost={false} />);
 
-    expect(await screen.findByTestId("consent-ai-approve")).toBeDisabled();
+    expect(await screen.findByTestId("consent-ai-approve")).toBeEnabled();
   });
 });
 

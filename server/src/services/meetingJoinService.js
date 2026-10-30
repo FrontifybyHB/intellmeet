@@ -75,6 +75,9 @@ async function authorizeJoin({ meetingIdParam, userId, userName }) {
       "MEETING_CANCELLED"
     );
   }
+  if (meeting.status === "scheduled") {
+    throw new AppError(HTTP_STATUS.CONFLICT, "This meeting is waiting for its host to start it.", "MEETING_NOT_STARTED");
+  }
 
   const isHost = String(meeting.hostId) === String(userId);
   if (!isHost) {
@@ -162,16 +165,10 @@ async function authorizeJoin({ meetingIdParam, userId, userName }) {
     token: issued.token,
     permissions: {
       isHost,
-      canRecord: isHost || await participantCanRecord(meeting._id, userId),
+      canRecord: isHost,
       canScreenShare: true,
     },
   };
-}
-
-async function participantCanRecord(meetingId, userId) {
-  if (!userId) return false;
-  const row = await MeetingParticipant.findOne({ meetingId, userId, status: "admitted" }, { canRecord: 1 }).lean();
-  return Boolean(row?.canRecord);
 }
 
 module.exports = { authorizeJoin, roomNameFor };
