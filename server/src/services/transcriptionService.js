@@ -293,7 +293,7 @@ async function checkTranscriptionEligibility({ meetingId, recording }) {
     );
   }
   // Explicit Google transfer consent for every captured human, at the
-  // current notice — recording-only approval is insufficient.
+  // current notice. Recording acknowledgement is a separate preference.
   await assertTransferConsent({ meetingId });
   if (env.transcriptionProvider === "disabled") {
     throw new AppError(

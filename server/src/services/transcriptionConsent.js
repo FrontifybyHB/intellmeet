@@ -17,7 +17,7 @@ const { isRecorderIdentity } = require("../constants/recordingLimits");
 // - every historical consent row for the meeting: a removed
 //   participant's later decline/withdrawal still blocks, because mixed
 //   room audio cannot reliably redact one speaker.
-// Recording-only approval ("recording") is INSUFFICIENT on its own.
+// Recording acknowledgement is intentionally not part of this gate.
 // Service recorder identities (server prefix) are never humans.
 // Membership is re-read live on every check — never cached.
 //
@@ -64,7 +64,6 @@ async function assertTransferConsent({ meetingId }) {
     }
     if (
       row.noticeVersion !== noticeVersion ||
-      row.recording !== "approved" ||
       row.aiTransfer !== "approved"
     ) {
       throw new AppError(
@@ -80,7 +79,6 @@ async function assertTransferConsent({ meetingId }) {
     if (
       !row ||
       row.noticeVersion !== noticeVersion ||
-      row.recording !== "approved" ||
       row.aiTransfer !== "approved"
     ) {
       const err = new AppError(

@@ -11,8 +11,7 @@
 // - explicit Google transfer consent (aiTransfer === "approved") at the
 //   CURRENT notice version for every captured human, re-checked at
 //   schedule time, immediately before each external call, and before
-//   publication (reuse of the Phase 4 gate — recording-only approval
-//   is insufficient).
+//   publication (recording acknowledgement is a separate preference).
 //
 // Run identity: recordingId + immutable source (transcript runId +
 // runVersion + segment count) + PIPELINE/MODEL/PROMPT/SCHEMA/CONTEXT

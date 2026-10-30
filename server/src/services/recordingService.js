@@ -8,7 +8,6 @@ const Meeting = require("../models/Meeting");
 const Recording = require("../models/Recording");
 const { roomNameFor } = require("./meetingJoinService");
 const { authorizeMeetingAccess } = require("./meetingAccessService");
-const { assertRecordingConsent } = require("./consentService");
 const provider = require("./recordingProvider");
 const { validateStorageLocator } = require("../validation/recordingValidation");
 const {
@@ -185,15 +184,6 @@ async function startRecording({ meetingIdParam, userId }) {
     );
   }
 
-  // Fail-closed consent gate BEFORE any provider side effect.
-  let consent;
-  try {
-    consent = await assertRecordingConsent({ meetingIdParam, userId });
-  } catch (err) {
-    recordingMetrics.observeReject(err && err.code);
-    throw err;
-  }
-
   if (!env.recordingOutputBucket) {
     recordingMetrics.observeReject("INTEGRATION_BLOCKER");
     throw new AppError(
@@ -212,9 +202,7 @@ async function startRecording({ meetingIdParam, userId }) {
       state: RECORDING_STATES.REQUESTED,
       version: 0,
       consentSnapshot: {
-        noticeVersion: consent.noticeVersion,
-        approvedCount: consent.approvedCount,
-        requiredCount: consent.requiredCount,
+        noticeVersion: env.recordingNoticeVersion,
         capturedAt: new Date(),
       },
     });
@@ -453,49 +441,6 @@ async function stopRecording({ meetingIdParam, recordingIdParam, userId }) {
   const refreshed = await Recording.findById(doc._id, LIST_PROJECTION).lean();
   emitStatus(meetingIdParam, refreshed || current);
   return { recording: serializeRecording(refreshed || current), resumed: false };
-}
-
-// --- Consent withdrawal ---------------------------------------------------
-// Persist-first withdrawal quarantine: the attempt is moved toward
-// stopping and flagged consentRevoked BEFORE any broadcast, so the
-// output can never become ready afterwards. Residual risk is stated,
-// not hidden: provider stop is asynchronous, so capture between
-// withdrawal and provider confirmation is possible and the artifact
-// stays quarantined (aborted) under the retention policy.
-async function quarantineForConsent({ meetingIdParam }) {
-  const meetingId =
-    typeof meetingIdParam === "object" && meetingIdParam !== null
-      ? meetingIdParam
-      : (await Meeting.findById(meetingIdParam, { _id: 1 }).lean()) || null;
-  const resolvedId = meetingId && meetingId._id ? meetingId._id : meetingIdParam;
-  const sessionId = roomNameFor(resolvedId);
-  const attempt = await findNonterminalAttempt(resolvedId, sessionId);
-  if (!attempt) {
-    return null;
-  }
-  const moved = await transitionAttempt(
-    attempt._id,
-    attempt.version,
-    [RECORDING_STATES.REQUESTED, RECORDING_STATES.STARTING, RECORDING_STATES.ACTIVE, RECORDING_STATES.UNKNOWN],
-    RECORDING_STATES.STOPPING,
-    { consentRevoked: true, errorCode: "CONSENT_WITHDRAWN" }
-  );
-  const current = moved ||
-    (await Recording.findById(attempt._id, LIST_PROJECTION).lean());
-  if (moved && moved.providerEgressId) {
-    try {
-      await provider.stopEgress({ egressId: moved.providerEgressId });
-    } catch (err) {
-      logger.error("recording_consent_stop_failed", {
-        recordingId: String(attempt._id),
-      });
-    }
-  }
-  if (current) {
-    emitStatus(String(resolvedId), current);
-    return serializeRecording(current);
-  }
-  return null;
 }
 
 // --- Provider event application (webhooks + recovery) ---------------------
@@ -828,36 +773,15 @@ async function accessLink({ meetingIdParam, recordingIdParam, userId }) {
   };
 }
 
-// Capture probe for the join path. Throws on DB failure so the caller
-// can fail closed to subscribe-only (join stays possible, but no new
-// media enters a possibly-captured source before consent). Returning
-// false means verifiably no active capture.
-async function hasActiveCapture(meetingIdParam) {
-  const sessionId = roomNameFor(meetingIdParam);
-  const attempt = await Recording.findOne(
-    {
-      meetingId: meetingIdParam,
-      sessionId,
-      state: {
-        $in: [RECORDING_STATES.STARTING, RECORDING_STATES.ACTIVE, RECORDING_STATES.UNKNOWN],
-      },
-    },
-    { _id: 1 }
-  ).lean();
-  return Boolean(attempt);
-}
-
 module.exports = {
   serializeRecording,
   transitionAttempt,
   startRecording,
   stopRecording,
-  quarantineForConsent,
   applyProviderEvent,
   finalizeVerifiedOutput,
   listRecordings,
   getRecording,
   accessLink,
-  hasActiveCapture,
   findNonterminalAttempt,
 };

@@ -4,8 +4,8 @@
 //
 // Recording lifecycle (durable, provider-reconciled):
 //   requested -> starting -> active -> stopping -> verifying -> ready
-// Alternatives: failed (provider failure/limit), aborted (consent
-// withdrawal/end raced capture), unknown (start timed out after the
+// Alternatives: failed (provider failure/limit), aborted (meeting end or
+// a preserved quarantine raced capture), unknown (start timed out after the
 // provider call — reconciliation required, NOT proof of absence).
 // Terminal states (ready/failed/aborted) never regress: every
 // transition is a conditional version-checked write, so stale or

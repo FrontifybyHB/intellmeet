@@ -36,8 +36,8 @@ export type RecordingState =
 
 export interface RecordingConsentSnapshot {
   noticeVersion: string;
-  approvedCount: number;
-  requiredCount: number;
+  approvedCount?: number;
+  requiredCount?: number;
   capturedAt: string | null;
 }
 

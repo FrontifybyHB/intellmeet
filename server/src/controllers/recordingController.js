@@ -9,7 +9,6 @@ const {
   listRecordings,
   getRecording,
   accessLink,
-  quarantineForConsent,
 } = require("../services/recordingService");
 const {
   validateConsentBody,
@@ -21,16 +20,11 @@ function noStore(res) {
   res.setHeader("Pragma", "no-cache");
 }
 
-// Participants change only their OWN consent (userId from auth).
-// Consent persists before any broadcast; a decline that revokes a
-// prior approval quarantines any in-flight capture afterwards.
+// Participants change only their OWN preferences (userId from auth).
+// Recording control remains host-only; AI transfer is evaluated separately.
 const setRecordingConsent = asyncHandler(async (req, res) => {
   const notice = currentNoticeVersion();
   const { decision, aiTransfer } = validateConsentBody(req.body, notice);
-  const previous = await getOwnConsent({
-    meetingIdParam: req.params.id,
-    userId: req.user.id,
-  });
   const consent = await setConsent({
     meetingIdParam: req.params.id,
     userId: req.user.id,
@@ -38,13 +32,6 @@ const setRecordingConsent = asyncHandler(async (req, res) => {
     aiTransfer,
     noticeVersion: notice,
   });
-  if (
-    previous.consent &&
-    previous.consent.recording === "approved" &&
-    decision === "declined"
-  ) {
-    await quarantineForConsent({ meetingIdParam: req.params.id });
-  }
   noStore(res);
   res.status(HTTP_STATUS.OK).json({ consent });
 });

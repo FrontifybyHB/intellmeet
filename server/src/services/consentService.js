@@ -1,37 +1,12 @@
 "use strict";
 
-const AppError = require("../utils/AppError");
-const { HTTP_STATUS } = require("../constants/httpStatus");
 const { getEnv } = require("../config/env");
-const Meeting = require("../models/Meeting");
 const RecordingConsent = require("../models/RecordingConsent");
 const { CONSENT_HISTORY_MAX } = require("../models/RecordingConsent");
 const { authorizeMeetingAccess } = require("./meetingAccessService");
 
 function currentNoticeVersion() {
   return getEnv().recordingNoticeVersion;
-}
-
-async function assertRecordingConsent({ meetingIdParam, userId }) {
-  const { meetingId, isHost } = await authorizeMeetingAccess({
-    meetingIdParam,
-    userId,
-  });
-  if (!isHost) throw new AppError(HTTP_STATUS.FORBIDDEN, "Only the host can control recording.", "NOT_HOST");
-  const meeting = await Meeting.findById(meetingId, { hostId: 1 }).lean();
-  if (!meeting) {
-    throw new AppError(
-      HTTP_STATUS.NOT_FOUND,
-      "Meeting not found.",
-      "MEETING_NOT_FOUND"
-    );
-  }
-  return {
-    meetingId: meeting._id,
-    noticeVersion: currentNoticeVersion(),
-    approvedCount: 0,
-    requiredCount: 0,
-  };
 }
 
 // Participants change only their OWN row; userId always comes from
@@ -82,7 +57,6 @@ function serializeConsent(doc) {
 
 module.exports = {
   currentNoticeVersion,
-  assertRecordingConsent,
   setConsent,
   getOwnConsent,
   serializeConsent,

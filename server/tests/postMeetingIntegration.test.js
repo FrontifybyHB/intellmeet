@@ -586,10 +586,10 @@ describe("phase 6 post-meeting integration", () => {
       noticeVersion: "v1",
       aiTransfer: "approved",
     });
-    // Start blocked without full consent — explicit failure, not silence.
+    // Host recording is independent from each participant's preference.
     const start = await api("POST", `/api/meetings/${id}/recordings/start`, hostToken);
-    assert.ok([400, 403, 409].includes(start.status));
-    assert.equal((await Recording.countDocuments({ meetingId: meeting._id })) === 0, true);
+    assert.equal(start.status, 200);
+    assert.equal((await Recording.countDocuments({ meetingId: meeting._id })) === 1, true);
 
     assert.equal((await api("POST", `/api/meetings/${id}/end`, hostToken)).status, 200);
 

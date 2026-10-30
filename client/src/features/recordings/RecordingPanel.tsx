@@ -133,8 +133,8 @@ export function RecordingPanel({
         <CardHeader>
           <CardTitle>Your recording consent</CardTitle>
           <CardDescription>
-            Recording can only start when every participant has approved the current notice. Your
-            choice applies to you alone.
+            The host controls recording. Your choice is stored separately from AI processing and
+            does not grant recording control.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -200,8 +200,8 @@ export function RecordingPanel({
 
           {recordingDecision === "approved" ? (
             <p className="text-xs text-muted-foreground">
-              Declining now stops any capture in progress and quarantines the output so it is never
-              published.
+              Your recording preference is stored for this meeting. AI processing is controlled
+              separately below.
             </p>
           ) : null}
 

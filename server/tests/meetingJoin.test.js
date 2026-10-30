@@ -325,7 +325,7 @@ describe("POST /api/meetings/:id/join", () => {
     assert.ok(!serialized.includes("test-livekit-secret-do-not-use"));
   });
 
-  it("skips the capture probe when the recording provider is disabled", async () => {
+  it("does not query recording consent while issuing a join token", async () => {
     const { meetingId, hostId, memberId } = makeIds();
     stubDb({
       meeting: { _id: meetingId, hostId, status: "live" },
@@ -349,7 +349,7 @@ describe("POST /api/meetings/:id/join", () => {
     }
   });
 
-  it("fails closed to subscribe-only when the capture probe errors", async () => {
+  it("keeps late joiners publish-capable during a host recording", async () => {
     const { meetingId, hostId, memberId } = makeIds();
     stubDb({
       meeting: { _id: meetingId, hostId, status: "live" },
@@ -357,21 +357,13 @@ describe("POST /api/meetings/:id/join", () => {
     });
     process.env.RECORDING_PROVIDER = "mock";
     resetEnvCache();
-    const Recording = require("../src/models/Recording");
-    const originalRecordingFindOne = Recording.findOne;
-    Recording.findOne = () => ({ lean: async () => { throw new Error("db down"); } });
-    try {
-      const res = await postJoin(meetingId.toString(), signAuthToken(memberId.toString()));
-      assert.equal(res.status, 200, "join stays possible so the user reaches consent");
-      const body = await res.json();
-      const claims = decodePayload(body.token);
-      assert.equal(claims.video.canPublish, false, "probe error must not grant publish");
-      assert.equal(claims.video.canPublishData, false);
-    } finally {
-      Recording.findOne = originalRecordingFindOne;
-      process.env.RECORDING_PROVIDER = "disabled";
-      resetEnvCache();
-    }
+    const res = await postJoin(meetingId.toString(), signAuthToken(memberId.toString()));
+    assert.equal(res.status, 200);
+    const claims = decodePayload((await res.json()).token);
+    assert.equal(claims.video.canPublish, true);
+    assert.equal(claims.video.canPublishData, true);
+    process.env.RECORDING_PROVIDER = "disabled";
+    resetEnvCache();
   });
 
   it("repeat joins stay valid and do not mutate membership", async () => {

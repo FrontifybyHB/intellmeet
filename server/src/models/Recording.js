@@ -18,8 +18,8 @@ const { NONTERMINAL_STATES } = require("../constants/recordingLimits");
 // - version: optimistic-concurrency guard. Every lifecycle transition
 //   is findOneAndUpdate({ _id, version }) + $inc, so stale/reordered
 //   callbacks cannot regress a terminal state.
-// - consentSnapshot: notice version + approver count captured at start.
-//   Review metadata only — authorization always re-reads live consent.
+// - consentSnapshot: notice version captured at start for audit/display.
+//   Recording authorization is host-only; AI transfer is checked separately.
 // - storage: server-selected bucket/key/format. No blobs, no
 //   credentials, no permanent public URLs, no stored signed links.
 // - errorCode: whitelisted safe code only, never provider text.

@@ -324,7 +324,7 @@ describe("phase 3 recording and termination", () => {
     await User.deleteMany({});
   });
 
-  it("denies outsiders and non-hosts; blocks start without full consent", async () => {
+  it("denies outsiders and non-hosts; host start does not require participant approval", async () => {
     const { meeting, host, users } = await makeMeeting({ members: ["a"] });
     const id = meeting._id.toString();
     const outsiderId = new mongoose.Types.ObjectId();
@@ -347,11 +347,9 @@ describe("phase 3 recording and termination", () => {
     );
     assert.equal((await api("POST", `/api/meetings/${id}/end`, users.a.token)).status, 403);
 
-    // Host start with nobody consented fails closed.
-    const blocked = await api("POST", `/api/meetings/${id}/recordings/start`, host.token);
-    assert.equal(blocked.status, 403);
-    assert.equal(blocked.json.error.code, "CONSENT_BLOCKED");
-    assert.equal(await Recording.countDocuments({}), 0);
+    const started = await api("POST", `/api/meetings/${id}/recordings/start`, host.token);
+    assert.equal(started.status, 200);
+    assert.equal(await Recording.countDocuments({}), 1);
   });
 
   it("consent requires current notice; aiTransfer is never inferred", async () => {
@@ -408,7 +406,7 @@ describe("phase 3 recording and termination", () => {
     assert.ok(creator.json.recording.providerEgressId);
     assert.equal(creator.json.recording.storage.bucket, "test-bucket");
     assert.ok(creator.json.recording.storage.key.indexOf("recordings/") === 0);
-    assert.equal(creator.json.recording.consentSnapshot.requiredCount, 2);
+    assert.equal(creator.json.recording.consentSnapshot.requiredCount, undefined);
     assert.equal(await Recording.countDocuments({}), 1);
 
     // Cross-meeting recording id is not visible here.
@@ -421,7 +419,7 @@ describe("phase 3 recording and termination", () => {
     assert.equal(cross.status, 404);
   });
 
-  it("declined consent blocks start; withdrawal quarantines capture (never ready)", async () => {
+  it("stores recording preferences without controlling the host capture", async () => {
     const { meeting, host, users } = await makeMeeting({ members: ["a"] });
     const id = meeting._id.toString();
     await api("POST", `/api/meetings/${id}/recording-consent`, host.token, {
@@ -432,8 +430,9 @@ describe("phase 3 recording and termination", () => {
       decision: "declined",
       noticeVersion: "v1",
     });
-    const blocked = await api("POST", `/api/meetings/${id}/recordings/start`, host.token);
-    assert.equal(blocked.status, 403);
+    const startedWithoutApproval = await api("POST", `/api/meetings/${id}/recordings/start`, host.token);
+    assert.equal(startedWithoutApproval.status, 200);
+    await api("POST", `/api/meetings/${id}/recordings/${startedWithoutApproval.json.recording.id}/stop`, host.token);
 
     // Approve -> start -> withdraw.
     await api("POST", `/api/meetings/${id}/recording-consent`, users.a.token, {
@@ -449,27 +448,11 @@ describe("phase 3 recording and termination", () => {
     });
     assert.equal(withdraw.status, 200);
     const mid = await Recording.findById(recordingId).lean();
-    assert.equal(mid.state, "stopping");
-    assert.equal(mid.consentRevoked, true);
-
-    // Even a successful provider finish + present file must NOT become ready.
-    const room = `meeting_${id}`;
-    provider.mockPutTestObject({
-      bucket: "test-bucket",
-      key: started.json.recording.storage.key,
-      sizeBytes: 2048,
-      durationMs: 2000,
-    });
-    const hook = await postWebhook(
-      egressEvent({ name: "egress_ended", roomName: room, egressId: started.json.recording.providerEgressId, status: "EGRESS_COMPLETE" })
-    );
-    assert.equal(hook.status, 200);
-    const final = await Recording.findById(recordingId).lean();
-    assert.equal(final.state, "aborted");
-    assert.equal(final.errorCode, "CONSENT_WITHDRAWN");
+    assert.equal(mid.consentRevoked, false);
+    assert.notEqual(mid.state, "aborted");
   });
 
-  it("late join during capture gets a subscribe-only token until consent", async () => {
+  it("late join during capture keeps normal publish permissions", async () => {
     const { meeting, host, users } = await makeMeeting({ members: ["a"] });
     const id = meeting._id.toString();
     await api("POST", `/api/meetings/${id}/recording-consent`, host.token, {
@@ -487,23 +470,18 @@ describe("phase 3 recording and termination", () => {
       const parts = joinJson.token.split(".");
       return JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")).grants;
     }
-    // Late-admitted member without consent: cannot publish into capture.
+    // Late-admitted member can publish; the meeting UI carries the recording notice.
     const lateId = new mongoose.Types.ObjectId();
     await ensureUsers([lateId]);
     const lateToken = signAuthToken(lateId.toString());
     await MeetingParticipant.create({ meetingId: meeting._id, userId: lateId, status: "admitted" });
     const gated = await api("POST", `/api/meetings/${id}/join`, lateToken);
     assert.equal(gated.status, 200);
-    assert.equal(grantsOf(gated.json).canPublish, false);
+    assert.equal(grantsOf(gated.json).canPublish, true);
     assert.equal(grantsOf(gated.json).recorder, false);
     assert.equal(grantsOf(gated.json).roomAdmin, false);
 
-    await api("POST", `/api/meetings/${id}/recording-consent`, lateToken, {
-      decision: "approved",
-      noticeVersion: "v1",
-    });
-    const full = await api("POST", `/api/meetings/${id}/join`, lateToken);
-    assert.equal(grantsOf(full.json).canPublish, true);
+    assert.equal(grantsOf(gated.json).canPublishData, true);
   });
 
   it("webhook lifecycle reaches ready only with verified output; failures never ready", async () => {

@@ -34,11 +34,9 @@ router.get("/meeting-lab", requireAuth, (req, res) => {
       version: noticeVersion,
       text:
         "Recording this meeting captures audio and video of all participants " +
-        "into a private file for later review. Capture starts only after every " +
-        "admitted participant approves this notice. You may decline, and you " +
-        "may withdraw approval at any time — withdrawal stops the recording " +
-        "and quarantines the file. Approval here never permits AI or " +
-        "third-party transfer; that is a separate decision.",
+        "into a private file for later review. The host controls capture and " +
+        "late joiners keep normal media permissions. Your recording preference " +
+        "does not permit AI or third-party transfer; that is a separate decision.",
     },
     routes: {
       create: "POST /api/meetings { title } (link-admission mode; returns meetingId + joinUrl)",

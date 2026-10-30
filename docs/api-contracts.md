@@ -102,7 +102,7 @@ from the recording decision in either direction.
 |---|---|---|---|
 | `GET /api/meetings/:id/recording-consent` | required | `200 { noticeVersion, consent }` — `consent` is the caller's own row or `null` | `403 NOT_A_MEMBER`/`NOT_ADMITTED` |
 | `POST /api/meetings/:id/recording-consent` | required + CSRF | `200 { consent }` | `400 VALIDATION_ERROR` (`decision` must be `approved`/`declined`), `409 NOTICE_VERSION_MISMATCH` |
-| `POST /api/meetings/:id/recordings/start` | host only + CSRF | `200 { recording, resumed }` | `403 NOT_HOST`, `403 CONSENT_BLOCKED`, `429 OVERLOADED`, `503 INTEGRATION_BLOCKER` |
+| `POST /api/meetings/:id/recordings/start` | host only + CSRF | `200 { recording, resumed }` | `403 NOT_HOST`, `429 OVERLOADED`, `503 INTEGRATION_BLOCKER` |
 | `POST /api/meetings/:id/recordings/:recordingId/stop` | host only + CSRF | `200 { recording, resumed }` | `403 NOT_HOST`, `404 RECORDING_NOT_FOUND` |
 | `GET /api/meetings/:id/recordings?limit=` | required | `200 { recordings, hasMore }` — newest-first | `400 VALIDATION_ERROR` (bad `limit`) |
 | `GET /api/meetings/:id/recordings/:recordingId` | required | `200 { recording }` | `404 RECORDING_NOT_FOUND` |
